@@ -9,7 +9,7 @@ use crypto::PublicKey;
 use ed25519_dalek::{Digest as _, Sha512};
 #[cfg(feature = "benchmark")]
 use log::info;
-use network::ReliableSender;
+use network::{ReliableSender, SimpleSender};
 #[cfg(feature = "benchmark")]
 use std::convert::TryInto as _;
 use std::net::SocketAddr;
@@ -31,8 +31,10 @@ pub struct BatchMaker {
     max_batch_delay: u64,
     /// Channel to receive transactions from the network.
     rx_transaction: Receiver<Transaction>,
-    /// Output channel to deliver sealed batches to the `QuorumWaiter`.
-    tx_message: Sender<QuorumWaiterMessage>,
+    // /// Output channel to deliver sealed batches to the `QuorumWaiter`.
+    // tx_message: Sender<QuorumWaiterMessage>,
+    //tx_message: Sender<QuorumWaiterMessage>,  /// Output channel to deliver sealed batches to the `QuorumWaiter`.
+    tx_batch: Sender<Vec<u8>>,   // channel to forward batch digest to processor in order for primary to propose.
     /// The network addresses of the other workers that share our worker id.
     workers_addresses: Vec<(PublicKey, SocketAddr)>,
     /// Holds the current batch.
@@ -40,7 +42,7 @@ pub struct BatchMaker {
     /// Holds the size of the current batch (in bytes).
     current_batch_size: usize,
     /// A network sender to broadcast the batches to the other workers.
-    network: ReliableSender,
+    network: SimpleSender, //ReliableSender,
 }
 
 impl BatchMaker {
@@ -48,7 +50,8 @@ impl BatchMaker {
         batch_size: usize,
         max_batch_delay: u64,
         rx_transaction: Receiver<Transaction>,
-        tx_message: Sender<QuorumWaiterMessage>,
+        //tx_message: Sender<QuorumWaiterMessage>, //sender channel to worker.QuorumWaiter
+        tx_batch: Sender<Vec<u8>>,   // sender channel to worker.Processor
         workers_addresses: Vec<(PublicKey, SocketAddr)>,
     ) {
         tokio::spawn(async move {
@@ -56,11 +59,12 @@ impl BatchMaker {
                 batch_size,
                 max_batch_delay,
                 rx_transaction,
-                tx_message,
+                //tx_message, //previously forwarded batch to Quorum_waiter; now skipping this step.
+                tx_batch,  
                 workers_addresses,
                 current_batch: Batch::with_capacity(batch_size * 2),
                 current_batch_size: 0,
-                network: ReliableSender::new(),
+                network: SimpleSender::new(),//ReliableSender::new(),
             }
             .run()
             .await;
@@ -141,17 +145,29 @@ impl BatchMaker {
         }
 
         // Broadcast the batch through the network.
-        let (names, addresses): (Vec<_>, _) = self.workers_addresses.iter().cloned().unzip();
-        let bytes = Bytes::from(serialized.clone());
-        let handlers = self.network.broadcast(addresses, bytes).await;
 
-        // Send the batch through the deliver channel for further processing.
-        self.tx_message
-            .send(QuorumWaiterMessage {
-                batch: serialized,
-                handlers: names.into_iter().zip(handlers.into_iter()).collect(),
-            })
-            .await
-            .expect("Failed to deliver batch");
+        //NEW:
+        //Best-effort broadcast only. Any failure is correlated with the primary operating this node (running on same machine)
+        let (_, addresses): (Vec<_>, _) = self.workers_addresses.iter().cloned().unzip();
+        let bytes = Bytes::from(serialized.clone());
+        self.network.broadcast(addresses, bytes).await; 
+
+        self.tx_batch.send(serialized).await.expect("Failed to deliver batch");
+
+        //OLD:
+        //This uses reliable sender. The receiver worker will reply with an ack. The Reply Handler is passed to Quorum Waiter.
+
+        // let (names, addresses): (Vec<_>, _) = self.workers_addresses.iter().cloned().unzip();
+        // let bytes = Bytes::from(serialized.clone());
+        // let handlers = self.network.broadcast(addresses, bytes).await;
+
+        // // Send the batch through the deliver channel for further processing.
+        // self.tx_message
+        //     .send(QuorumWaiterMessage {
+        //         batch: serialized,
+        //         handlers: names.into_iter().zip(handlers.into_iter()).collect(),
+        //     })
+        //     .await
+        //     .expect("Failed to deliver batch");
     }
 }
