@@ -42,7 +42,7 @@ pub struct BatchMaker {
     /// Holds the size of the current batch (in bytes).
     current_batch_size: usize,
     /// A network sender to broadcast the batches to the other workers.
-    network: ReliableSender,
+    network: SimpleSender,
 }
 
 impl BatchMaker {
@@ -64,7 +64,7 @@ impl BatchMaker {
                 workers_addresses,
                 current_batch: Batch::with_capacity(batch_size * 2),
                 current_batch_size: 0,
-                network: ReliableSender::new(),
+                network: SimpleSender::new(),
             }
             .run()
             .await;
@@ -150,7 +150,7 @@ impl BatchMaker {
         //Best-effort broadcast only. Any failure is correlated with the primary operating this node (running on same machine)
         let (_, addresses): (Vec<_>, _) = self.workers_addresses.iter().cloned().unzip();
         let bytes = Bytes::from(serialized.clone());
-        let handlers = self.network.broadcast(addresses, bytes).await; 
+        self.network.broadcast(addresses, bytes).await; 
 
         self.tx_batch.send(serialized).await.expect("Failed to deliver batch");
 
