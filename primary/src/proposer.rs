@@ -8,6 +8,7 @@ use crypto::{Digest, PublicKey, SignatureService};
 use log::info;
 use log::{debug, log_enabled, warn};
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
 
@@ -97,7 +98,7 @@ impl Proposer {
             header = Header::new(
                 self.name,
                 self.round,
-                self.digests.drain(..1).collect(),
+                BTreeMap::new(),
                 self.last_parents.drain(..).map(|x| x.digest()).collect(),
                 &mut self.signature_service,
             ).await;
