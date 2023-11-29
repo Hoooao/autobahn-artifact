@@ -83,14 +83,36 @@ impl Proposer {
 
     async fn make_header(&mut self) {
         // Make a new header.
-        let header = Header::new(
+        debug!("digests size before is {:?}", self.digests.len());
+        let mut header: Header;
+        if self.digests.len() > 0 {
+            header = Header::new(
+                self.name,
+                self.round,
+                self.digests.drain(..1).collect(),
+                self.last_parents.drain(..).map(|x| x.digest()).collect(),
+                &mut self.signature_service,
+            ).await;
+        } else {
+            header = Header::new(
+                self.name,
+                self.round,
+                self.digests.drain(..1).collect(),
+                self.last_parents.drain(..).map(|x| x.digest()).collect(),
+                &mut self.signature_service,
+            ).await;
+        }
+
+        debug!("digests size after is {:?}", self.digests.len());
+
+        /*let header = Header::new(
             self.name,
             self.round,
             self.digests.drain(..).collect(),
             self.last_parents.drain(..).map(|x| x.digest()).collect(),
             &mut self.signature_service,
         )
-        .await;
+        .await;*/
         debug!("Created {:?}", header);
 
         #[cfg(feature = "benchmark")]
