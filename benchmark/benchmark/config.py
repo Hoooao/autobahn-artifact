@@ -128,6 +128,7 @@ class BenchParameters:
             self.faults = int(json['faults'])
             self.duration = int(json['duration'])
             self.runs = int(json['runs']) if 'runs' in json else 1
+            self.collocate = True
         except KeyError as e:
             raise ConfigError(f'Malformed bench parameters: missing key {e}')
 

@@ -5,7 +5,7 @@ from google.cloud import compute_v1
 from google.api_core.extended_operation import ExtendedOperation
 
 from benchmark.utils import Print, BenchError, progress_bar
-from benchmark.settings import Settings, SettingsError
+from .settings import Settings, SettingsError
 
 
 class GCPError(Exception):
@@ -48,6 +48,8 @@ class InstanceManager:
                 # Removes the zones/ prefix from the zone name
                 zone = zone[6:]
                 for instance in response.instances:
+                    if instance.name == 'autobahn-instance':
+                        continue
                     ids[zone] += [instance.name]
                     ips[zone] += [instance.network_interfaces[0].network_i_p]
         return ids, ips
@@ -138,7 +140,7 @@ class InstanceManager:
                     instance_insert_request = compute_v1.InsertInstanceRequest()
                     instance_insert_request.project = self.settings.project_id
                     instance_insert_request.zone = zone
-                    instance_insert_request.instance_resource.name = self.INSTANCE_NAME + str(instance)
+                    instance_insert_request.instance_resource.name = self.INSTANCE_NAME + str(instance) + "-" + str(zone)
                     instance_insert_request.source_instance_template = self.settings.templates[i]
                     print(self.settings.templates[i])
                     operation = self.client.insert(instance_insert_request)
