@@ -298,7 +298,8 @@ impl Core {
 
         // Send all the newly committed blocks to the node's application layer.
         while let Some(block) = to_commit.pop_back() {
-            //if block.digest != Digest::default() {
+            // Don't commit to the log if we are a failed node
+            if self.during_simulated_asynchrony && self.current_effect_type == AsyncEffectType::Failure {
                 info!("Committed {}", block);
 
                 for (digest, _) in block.payload.iter() {
@@ -307,7 +308,7 @@ impl Core {
                 info!("Committed B{}({})", block.round, base64::encode(digest));
                 }
                 
-            //}
+            }
             debug!("Committed {:?}", block);
             if let Err(e) = self.commit_channel.send(block).await {
                 warn!("Failed to send block through the commit channel: {}", e);
@@ -733,10 +734,6 @@ impl Core {
         loop {
             let result = tokio::select! {
                 Some(message) = self.core_channel.recv() => {
-                    if self.during_simulated_asynchrony && self.current_effect_type == AsyncEffectType::Failure {
-                        return ()
-                    }
-
                     match message {
                         ConsensusMessage::Propose(block) => self.handle_proposal(&block).await,
                         ConsensusMessage::Vote(vote) => self.handle_vote(&vote).await,
