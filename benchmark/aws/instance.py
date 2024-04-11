@@ -1,13 +1,14 @@
-import boto3
+# Copyright(C) Facebook, Inc. and its affiliates.
 from botocore.exceptions import ClientError
-from collections import defaultdict, OrderedDict
-from time import sleep
+from collections import defaultdict
+from google.cloud import compute_v1
+from google.api_core.extended_operation import ExtendedOperation
 
 from benchmark.utils import Print, BenchError, progress_bar
-from aws.settings import Settings, SettingsError
+from .settings import Settings, SettingsError
 
 
-class AWSError(Exception):
+class GCPError(Exception):
     def __init__(self, error):
         assert isinstance(error, ClientError)
         self.message = error.response['Error']['Message']
@@ -16,15 +17,13 @@ class AWSError(Exception):
 
 
 class InstanceManager:
-    INSTANCE_NAME = 'hotstuff-node'
-    SECURITY_GROUP_NAME = 'hotstuff'
+    INSTANCE_NAME = 'autobahn-node'
+    SECURITY_GROUP_NAME = 'autobahn'
 
     def __init__(self, settings):
         assert isinstance(settings, Settings)
         self.settings = settings
-        self.clients = OrderedDict()
-        for region in settings.aws_regions:
-            self.clients[region] = boto3.client('ec2', region_name=region)
+        self.client = compute_v1.InstancesClient()
 
     @classmethod
     def make(cls, settings_file='settings.json'):
@@ -37,34 +36,41 @@ class InstanceManager:
         # Possible states are: 'pending', 'running', 'shutting-down',
         # 'terminated', 'stopping', and 'stopped'.
         ids, ips = defaultdict(list), defaultdict(list)
-        for region, client in self.clients.items():
-            r = client.describe_instances(
-                Filters=[
-                    {
-                        'Name': 'tag:Name',
-                        'Values': [self.INSTANCE_NAME]
-                    },
-                    {
-                        'Name': 'instance-state-name',
-                        'Values': state
-                    }
-                ]
-            )
-            instances = [y for x in r['Reservations'] for y in x['Instances']]
-            for x in instances:
-                ids[region] += [x['InstanceId']]
-                if 'PublicIpAddress' in x:
-                    ips[region] += [x['PublicIpAddress']]
+        filter = ''
+
+        for status in state:
+            filter = 'status eq "' + status + '"'
+            request = compute_v1.AggregatedListInstancesRequest(filter=filter)
+            request.project = self.settings.project_id
+            agg_list = self.client.aggregated_list(request=request)
+
+            for zone, response in agg_list:
+                # Removes the zones/ prefix from the zone name
+                zone = zone[6:]
+                for instance in response.instances:
+                    if instance.name == 'autobahn-instance':
+                        continue
+                    ids[zone] += [instance.name]
+                    ips[zone] += [instance.network_interfaces[0].network_i_p]
         return ids, ips
 
-    def _wait(self, state):
-        # Possible states are: 'pending', 'running', 'shutting-down',
-        # 'terminated', 'stopping', and 'stopped'.
-        while True:
-            sleep(1)
-            ids, _ = self._get(state)
-            if sum(len(x) for x in ids.values()) == 0:
-                break
+
+    def _wait(self, operation, state="operation", timeout=3600):
+        result = operation.result(timeout=timeout)
+
+        if operation.error_code:
+            Print.info(
+                "Error during " + str(state) + ": Code: " + str(operation.error_code) + "Error message is: " + str(operation.error_message)
+            )
+            Print.info("Operation ID: " + str(operation.name))
+            raise operation.exception() or RuntimeError(operation.error_message)
+
+        if operation.warnings:
+            Print.info("Warnings during " + str(state))
+            for warning in operation.warnings:
+                Print.info(str(warning.code) + ":" + str(warning.message))
+
+        return result
 
     def _create_security_group(self, client):
         client.create_security_group(
@@ -90,43 +96,17 @@ class InstanceManager:
                 },
                 {
                     'IpProtocol': 'tcp',
-                    'FromPort': self.settings.consensus_port,
-                    'ToPort': self.settings.consensus_port,
+                    'FromPort': self.settings.base_port,
+                    'ToPort': self.settings.base_port + 2_000,
                     'IpRanges': [{
                         'CidrIp': '0.0.0.0/0',
-                        'Description': 'Consensus port',
+                        'Description': 'Dag port',
                     }],
                     'Ipv6Ranges': [{
                         'CidrIpv6': '::/0',
-                        'Description': 'Consensus port',
+                        'Description': 'Dag port',
                     }],
-                },
-                {
-                    'IpProtocol': 'tcp',
-                    'FromPort': self.settings.mempool_port,
-                    'ToPort': self.settings.mempool_port,
-                    'IpRanges': [{
-                        'CidrIp': '0.0.0.0/0',
-                        'Description': 'Mempool port',
-                    }],
-                    'Ipv6Ranges': [{
-                        'CidrIpv6': '::/0',
-                        'Description': 'Mempool port',
-                    }],
-                },
-                {
-                    'IpProtocol': 'tcp',
-                    'FromPort': self.settings.front_port,
-                    'ToPort': self.settings.front_port,
-                    'IpRanges': [{
-                        'CidrIp': '0.0.0.0/0',
-                        'Description': 'Front end to accept clients transactions',
-                    }],
-                    'Ipv6Ranges': [{
-                        'CidrIpv6': '::/0',
-                        'Description': 'Front end to accept clients transactions',
-                    }],
-                },
+                }
             ]
         )
 
@@ -140,123 +120,108 @@ class InstanceManager:
         )
         return response['Images'][0]['ImageId']
 
+
     def create_instances(self, instances):
         assert isinstance(instances, int) and instances > 0
 
-        # Create the security group in every region.
-        for client in self.clients.values():
-            try:
-                self._create_security_group(client)
-            except ClientError as e:
-                error = AWSError(e)
-                if error.code != 'InvalidGroup.Duplicate':
-                    raise BenchError('Failed to create security group', error)
-
         try:
             # Create all instances.
-            size = instances * len(self.clients)
+            size = instances * self.settings.gcp_zones 
             progress = progress_bar(
-                self.clients.values(), prefix=f'Creating {size} instances'
+                self.settings.gcp_zones, prefix=f'Creating {size} instances'
             )
-            for client in progress:
-                client.run_instances(
-                    ImageId=self._get_ami(client),
-                    InstanceType=self.settings.instance_type,
-                    KeyName=self.settings.key_name,
-                    MaxCount=instances,
-                    MinCount=instances,
-                    SecurityGroups=[self.SECURITY_GROUP_NAME],
-                    TagSpecifications=[{
-                        'ResourceType': 'instance',
-                        'Tags': [{
-                            'Key': 'Name',
-                            'Value': self.INSTANCE_NAME
-                        }]
-                    }],
-                    EbsOptimized=True,
-                    BlockDeviceMappings=[{
-                        'DeviceName': '/dev/sda1',
-                        'Ebs': {
-                            'VolumeType': 'gp2',
-                            'VolumeSize': 200,
-                            'DeleteOnTermination': True
-                        }
-                    }],
-                )
 
-            # Wait for the instances to boot.
+            # Wait for instances to boot
             Print.info('Waiting for all instances to boot...')
-            self._wait(['pending'])
+            i = 0
+
+            for zone in progress:
+                for instance in range(instances):
+                    instance_insert_request = compute_v1.InsertInstanceRequest()
+                    instance_insert_request.project = self.settings.project_id
+                    instance_insert_request.zone = zone
+                    instance_insert_request.instance_resource.name = self.INSTANCE_NAME + str(instance) + "-" + str(zone)
+                    instance_insert_request.source_instance_template = self.settings.templates[i]
+                    print(self.settings.templates[i])
+                    operation = self.client.insert(instance_insert_request)
+                    self._wait(operation, 'STAGING')
+                i += 1
+
             Print.heading(f'Successfully created {size} new instances')
         except ClientError as e:
-            raise BenchError('Failed to create AWS instances', AWSError(e))
+            raise BenchError('Failed to create AWS instances', GCPError(e))
+
 
     def terminate_instances(self):
         try:
-            ids, _ = self._get(['pending', 'running', 'stopping', 'stopped'])
+            ids, _ = self._get(['STAGING', 'RUNNING', 'REPAIRING', 'STOPPING', 'SUSPENDED', 'SUSPENDING'])
             size = sum(len(x) for x in ids.values())
             if size == 0:
                 Print.heading(f'All instances are shut down')
                 return
 
             # Terminate instances.
-            for region, client in self.clients.items():
-                if ids[region]:
-                    client.terminate_instances(InstanceIds=ids[region])
+            for zone, id_list in ids.items():
+                for id in id_list:
+                    print(self.settings.project_id)
+                    print(zone)
+                    print(id)
+                    operation = self.client.delete(project=self.settings.project_id, zone=zone, instance=id)
+                    self._wait(operation, 'STOPPING')
 
             # Wait for all instances to properly shut down.
             Print.info('Waiting for all instances to shut down...')
-            self._wait(['shutting-down'])
-            for client in self.clients.values():
-                client.delete_security_group(
-                    GroupName=self.SECURITY_GROUP_NAME
-                )
-
             Print.heading(f'Testbed of {size} instances destroyed')
         except ClientError as e:
-            raise BenchError('Failed to terminate instances', AWSError(e))
+            raise BenchError('Failed to terminate instances', GCPError(e))
 
     def start_instances(self, max):
         size = 0
         try:
-            ids, _ = self._get(['stopping', 'stopped'])
-            for region, client in self.clients.items():
-                if ids[region]:
-                    target = ids[region]
-                    target = target if len(target) < max else target[:max]
-                    size += len(target)
-                    client.start_instances(InstanceIds=target)
+            ids, _ = self._get(['SUSPENDED'])
+            # Resume a suspended instance.
+            for zone, id_list in ids.items():
+                target = 0
+                for id in id_list:
+                    if target < max and self.client.get(project=self.settings.project_id, zone=zone, instance=id).status == compute_v1.Instance.Status.SUSPENDED:
+                        operation = self.client.resume(project=self.settings.project_id, zone=zone, instance=id)
+                        self._wait(operation, 'RUNNING')
+                        target += 1
             Print.heading(f'Starting {size} instances')
         except ClientError as e:
-            raise BenchError('Failed to start instances', AWSError(e))
+            raise BenchError('Failed to start instances', GCPError(e))
 
     def stop_instances(self):
         try:
-            ids, _ = self._get(['pending', 'running'])
-            for region, client in self.clients.items():
-                if ids[region]:
-                    client.stop_instances(InstanceIds=ids[region])
+            ids, _ = self._get(['RUNNING', 'REPAIRING'])
+            for zone, id_list in ids.items():
+                for id in id_list:
+                    self.client.suspend(project=self.settings.project_id, zone=zone, instance=id)
             size = sum(len(x) for x in ids.values())
             Print.heading(f'Stopping {size} instances')
         except ClientError as e:
-            raise BenchError(AWSError(e))
+            raise BenchError('Failed to stop instances', GCPError(e))
 
     def hosts(self, flat=False):
         try:
-            _, ips = self._get(['pending', 'running'])
-            return [x for y in ips.values() for x in y] if flat else ips
+            _, ips  = self._get(['STAGING', 'RUNNING'])
+            if not flat:
+                return ips
+            else:
+                return [x for y in ips.values() for x in y]
         except ClientError as e:
-            raise BenchError('Failed to gather instances IPs', AWSError(e))
+            raise BenchError('Failed to gather instances IPs', GCPError(e))
+
 
     def print_info(self):
-        hosts = self.hosts()
+        hosts = self.hosts(False)
         key = self.settings.key_path
         text = ''
-        for region, ips in hosts.items():
-            text += f'\n Region: {region.upper()}\n'
+        for zone, ips in hosts.items():
+            text += f'\n Zone: {zone.upper()}\n'
             for i, ip in enumerate(ips):
                 new_line = '\n' if (i+1) % 6 == 0 else ''
-                text += f'{new_line} {i}\tssh -i {key} ubuntu@{ip}\n'
+                text += f'{new_line} {i}\tssh -i {key} neilgiridharan@{ip}\n'
         print(
             '\n'
             '----------------------------------------------------------------\n'
