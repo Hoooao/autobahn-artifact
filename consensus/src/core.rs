@@ -518,6 +518,8 @@ impl Core {
         commit_rule &= b1.round + 1 == b2.round;
         if commit_rule {
             self.commit(b0.clone()).await?;
+        } else {
+            debug!("cannot commit block in round {}", b0.round);
         }
         self.update_preferred_round(b1.round);
 
