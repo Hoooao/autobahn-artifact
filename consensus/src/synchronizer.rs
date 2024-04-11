@@ -128,6 +128,23 @@ impl Synchronizer {
         Ok(())
     }
 
+    pub async fn transmit_partition(
+        message: &ConsensusMessage,
+        from: &PublicKey,
+        network_channel: &Sender<NetMessage>,
+        committee: &Committee,
+        our_partition: bool,
+        partition_public_keys: &HashSet<PublicKey>,
+    ) -> ConsensusResult<()> {
+        let addresses = committee.partition_broadcast_addresses(from, our_partition, partition_public_keys);
+        let bytes = bincode::serialize(message).expect("Failed to serialize core message");
+        let message = NetMessage(Bytes::from(bytes), addresses);
+        if let Err(e) = network_channel.send(message).await {
+            panic!("Failed to send block through network channel: {}", e);
+        }
+        Ok(())
+    }
+
     pub async fn get_parent_block(&mut self, block: &Block) -> ConsensusResult<Option<Block>> {
         if block.qc == QC::genesis() {
             return Ok(Some(Block::genesis()));
