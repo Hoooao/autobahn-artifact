@@ -299,7 +299,7 @@ impl Core {
         // Send all the newly committed blocks to the node's application layer.
         while let Some(block) = to_commit.pop_back() {
             // Don't commit to the log if we are a failed node
-            if self.during_simulated_asynchrony && self.current_effect_type == AsyncEffectType::Failure {
+            if !(self.during_simulated_asynchrony && self.current_effect_type == AsyncEffectType::Failure) {
                 info!("Committed {}", block);
 
                 for (digest, _) in block.payload.iter() {
