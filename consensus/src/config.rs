@@ -1,7 +1,7 @@
 use crate::error::{ConsensusError, ConsensusResult};
 use crypto::PublicKey;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 
 pub type Stake = u32;
@@ -14,10 +14,11 @@ pub struct Parameters {
     pub max_payload_size: usize,
     pub min_block_delay: u64,
 
-    //asynchrony simulation:
+    //asynchrony framework parameters:
     pub simulate_asynchrony: bool,
-    pub asynchrony_start: u64,
-    pub asynchrony_duration: u64,
+    pub async_type: VecDeque<u8>,
+    pub asynchrony_start: VecDeque<u64>,
+    pub asynchrony_duration: VecDeque<u64>,
 }
 
 impl Default for Parameters {

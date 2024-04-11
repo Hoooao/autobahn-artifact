@@ -15,7 +15,7 @@ use log::{debug, error, info, warn};
 use network::NetMessage;
 use serde::{Deserialize, Serialize};
 use std::cmp::max;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::pin::Pin;
 use std::time::Instant;
 use store::Store;
@@ -38,6 +38,18 @@ pub enum ConsensusMessage {
     SyncRequest(Digest, PublicKey),
 }
 
+#[derive(Clone, PartialEq, std::fmt::Debug)]
+pub enum AsyncEffectType {
+    Off = 0,
+    TempBlip = 1, //Send nothing for x seconds, and then release all messages
+    Failure = 2, //Send nothing for x seconds  //TODO: Combine with TempBlip?
+    Partition = 3, //Send nothing to partitioned replicas for x seconds, then release all
+    Egress = 4,  //For x seconds, delay all outbound messages by some amount
+}
+fn uint_to_enum(v: u8) -> AsyncEffectType {
+    unsafe { std::mem::transmute(v) }
+}
+
 pub struct Core {
     name: PublicKey,
     committee: Committee,
@@ -58,13 +70,32 @@ pub struct Core {
     timer: Timer,
     aggregator: Aggregator,
     
-    simulate_asynchrony: bool,
+    /*simulate_asynchrony: bool,
     asynchrony_start: u64,
     asynchrony_duration: u64,
     during_simulated_asynchrony: bool,
     async_timer_futures: FuturesUnordered<Pin<Box<dyn Future<Output = ()> + Send>>>,
     current_time: Instant,
-    async_last_tc: Option<TC>,
+    async_last_tc: Option<TC>,*/
+
+    simulate_asynchrony: bool, //Simulating an async event
+    asynchrony_type: VecDeque<AsyncEffectType>, //Type of effects: 0 for delay full async duration, 1 for partition, 2 for  failure, 3 for egress delay. Will start #type many blips.
+    asynchrony_start: VecDeque<u64>,     //Start of async period   //offset from current time (in seconds) when to start next async effect
+    asynchrony_duration: VecDeque<u64>,  //Duration of async period
+    affected_nodes: VecDeque<u64>, ////first k nodes experience specified async behavior.
+    during_simulated_asynchrony: bool,  //Currently in async period?
+    current_effect_type: AsyncEffectType, //Currently active effect.
+
+    async_timer_futures: FuturesUnordered<Pin<Box<dyn Future<Output = ()> + Send>>>, //Used to turn on/off period  //Note: (slot, view) are not needed, it's just to re-use existing Timer
+    already_set_timers: bool, //To avoid setting multiple timers
+
+    // For partition
+    partition_public_keys: HashSet<PublicKey>,
+    partition_delayed_msgs: Vec<(ConsensusMessage, u64, Option<PublicKey>, bool)>, //(msg, height, author, consensus/car path)
+    //For egress
+    egress_penalty: u64, //the number of ms of egress penalty.
+    egress_timer: Timer,
+    egress_delayed_msgs: VecDeque<(ConsensusMessage, u64, Option<PublicKey>, bool)>,
 }
 
 impl Core {
