@@ -227,6 +227,16 @@ impl Core {
                         continue;
                     }
                 }
+
+                if self.asynchrony_type[i] == AsyncEffectType::Failure {
+                    let mut keys: Vec<_> = self.committee.authorities.keys().cloned().collect();
+                    keys.sort();
+                    let index = keys.binary_search(&self.name).unwrap();
+                    // Skip nodes that are not affected by the asynchrony
+                    if index >= self.affected_nodes[i] as usize {
+                        continue;
+                    }
+                }
                         
                 let start_offset = self.asynchrony_start[i];
                 let end_offset = start_offset +  self.asynchrony_duration[i];
