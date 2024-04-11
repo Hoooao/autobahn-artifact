@@ -733,6 +733,10 @@ impl Core {
         loop {
             let result = tokio::select! {
                 Some(message) = self.core_channel.recv() => {
+                    if self.during_simulated_asynchrony && self.current_effect_type == AsyncEffectType::Failure {
+                        return ()
+                    }
+
                     match message {
                         ConsensusMessage::Propose(block) => self.handle_proposal(&block).await,
                         ConsensusMessage::Vote(vote) => self.handle_vote(&vote).await,
