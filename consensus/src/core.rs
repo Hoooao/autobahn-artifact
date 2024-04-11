@@ -335,14 +335,15 @@ impl Core {
         }
         
         let message = ConsensusMessage::Timeout(timeout.clone());
-        Synchronizer::transmit(
+        /*Synchronizer::transmit(
             &message,
             &self.name,
             None,
             &self.network_channel,
             &self.committee,
         )
-        .await?;
+        .await?;*/
+        self.send_msg(message, None).await;
         self.handle_timeout(&timeout).await
     }
 
@@ -392,14 +393,15 @@ impl Core {
 
             // Broadcast the TC.
             let message = ConsensusMessage::TC(tc.clone());
-            Synchronizer::transmit(
+            /*Synchronizer::transmit(
                 &message,
                 &self.name,
                 None,
                 &self.network_channel,
                 &self.committee,
             )
-            .await?;
+            .await?;*/
+            self.send_msg(message, None).await;
 
             // Make a new block if we are the next leader.
             if self.name == self.leader_elector.get_leader(self.round) {
@@ -459,14 +461,15 @@ impl Core {
 
         // Process our new block and broadcast it.
         let message = ConsensusMessage::Propose(block.clone());
-        Synchronizer::transmit(
+        /*Synchronizer::transmit(
             &message,
             &self.name,
             None,
             &self.network_channel,
             &self.committee,
         )
-        .await?;
+        .await?;*/
+        self.send_msg(message, None).await;
         self.process_block(&block).await?;
 
         // Wait for the minimum block delay.
@@ -526,14 +529,15 @@ impl Core {
                 self.handle_vote(&vote).await?;
             } else {
                 let message = ConsensusMessage::Vote(vote);
-                Synchronizer::transmit(
+                /*Synchronizer::transmit(
                     &message,
                     &self.name,
                     Some(&next_leader),
                     &self.network_channel,
                     &self.committee,
                 )
-                .await?;
+                .await?;*/
+                self.send_msg(message, Some(next_leader)).await;
             }
         }
         Ok(())
@@ -582,14 +586,15 @@ impl Core {
         if let Some(bytes) = self.store.read(digest.to_vec()).await? {
             let block = bincode::deserialize(&bytes)?;
             let message = ConsensusMessage::Propose(block);
-            Synchronizer::transmit(
+            /*Synchronizer::transmit(
                 &message,
                 &self.name,
                 Some(&sender),
                 &self.network_channel,
                 &self.committee,
             )
-            .await?;
+            .await?;*/
+            self.send_msg(message, Some(sender)).await;
         }
         Ok(())
     }
