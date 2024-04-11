@@ -41,7 +41,7 @@ def local(ctx):
 
 
 @task
-def create(ctx, nodes=2):
+def create(ctx, nodes=1):
     ''' Create a testbed'''
     try:
         InstanceManager.make().create_instances(nodes)
@@ -99,7 +99,7 @@ def remote(ctx):
     ''' Run benchmarks on AWS '''
     bench_params = {
         'nodes': [4],
-        'rate': [20_000],
+        'rate': [10_000],
         'tx_size': 512,
         'faults': 0,
         'duration': 60,
@@ -109,18 +109,21 @@ def remote(ctx):
         'consensus': {
             'timeout_delay': 5_000,
             'sync_retry_delay': 5_000,
-            'max_payload_size': 500_000,
-            'min_block_delay': 100
+            'max_payload_size': 7_812_500,
+            'min_block_delay': 0,
+            'simulate_asynchrony': True,
+            'asynchrony_start': 15_000,
+            'asynchrony_duration': 30_000
         },
         'mempool': {
-            'queue_capacity': 100_000,
+            'queue_capacity': 10_000_000,
             'sync_retry_delay': 5_000,
             'max_payload_size': 500_000,
-            'min_block_delay': 100
+            'min_block_delay': 0
         }
     }
     try:
-        Bench(ctx).run(bench_params, node_params, debug=False)
+        Bench(ctx).run(bench_params, node_params, debug=True)
     except BenchError as e:
         Print.error(e)
 

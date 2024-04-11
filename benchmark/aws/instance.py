@@ -126,9 +126,9 @@ class InstanceManager:
 
         try:
             # Create all instances.
-            size = instances * self.settings.gcp_zones 
+            size = instances * self.settings.aws_regions
             progress = progress_bar(
-                self.settings.gcp_zones, prefix=f'Creating {size} instances'
+                self.settings.aws_regions, prefix=f'Creating {size} instances'
             )
 
             # Wait for instances to boot

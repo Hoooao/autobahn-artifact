@@ -60,6 +60,8 @@ class Bench:
             # The following dependencies prevent the error: [error: linker `cc` not found].
             'sudo apt-get -y install build-essential',
             'sudo apt-get -y install cmake',
+            'sudo apt-get -y install git',
+            'sudo apt-get -y install tmux',
 
             # Install rust (non-interactive).
             'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y',
@@ -119,7 +121,7 @@ class Bench:
         )
         cmd = [
             f'(cd {self.settings.repo_name} && git fetch -f)',
-            f'(cd {self.settings.repo_name} && git checkout -f {self.settings.branch})',
+            f'(cd {self.settings.repo_name} && git checkout -f {self.settings.branch} --)',
             f'(cd {self.settings.repo_name} && git pull -f)',
             'source $HOME/.cargo/env',
             f'(cd {self.settings.repo_name}/node && {CommandMaker.compile()})',

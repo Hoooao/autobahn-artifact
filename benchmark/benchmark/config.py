@@ -165,3 +165,4 @@ class PlotParameters:
 
         except ValueError:
             raise ConfigError('Invalid parameters type')
+
