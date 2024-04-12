@@ -95,8 +95,9 @@ pub struct Core {
     partition_delayed_msgs: VecDeque<(ConsensusMessage, Option<PublicKey>)>, //(msg, height, author, consensus/car path)
     //For egress
     egress_penalty: u64, //the number of ms of egress penalty.
-    egress_timer: Timer,
-    egress_delayed_msgs: VecDeque<(ConsensusMessage, Option<PublicKey>)>,
+    //egress_timer: Timer,
+    egress_delayed_msgs: VecDeque<(u128, ConsensusMessage, Option<PublicKey>)>,
+    egress_timer_futures: FuturesUnordered<Pin<Box<dyn Future<Output = ()> + Send>>>,
     // Timeouts
     use_exponential_timeouts: bool,
     original_timeout: u64,
@@ -162,8 +163,9 @@ impl Core {
             partition_public_keys: HashSet::new(),
             partition_delayed_msgs: VecDeque::new(),
             egress_penalty,
-            egress_timer: Timer::new(egress_penalty),
+            //egress_timer: Timer::new(egress_penalty),
             egress_delayed_msgs: VecDeque::new(),
+            egress_timer_futures: FuturesUnordered::new(),
             use_exponential_timeouts,
             original_timeout: timeout_value,
         }
@@ -219,8 +221,6 @@ impl Core {
         if self.simulate_asynchrony && block.round == 2 && !self.already_set_timers {
             debug!("added async timers");
             self.already_set_timers = true;
-            // Reset the timeout value
-            self.parameters.timeout_delay = self.original_timeout;
             
             debug!("asynchrony start is {:?}", self.asynchrony_start);
             for i in 0..self.asynchrony_start.len() {
@@ -343,9 +343,15 @@ impl Core {
         .await;
         debug!("Created {:?}", timeout);
         if self.use_exponential_timeouts {
-            // Double the timeout
-            self.parameters.timeout_delay *= 2;
-            debug!("new timeout value is {}", self.parameters.timeout_delay);
+            // Don't double the timeout in the first few rounds
+            if self.round < 4 {
+                self.parameters.timeout_delay = self.original_timeout;
+            } else {
+                // Double the timeout unless in early rounds
+                self.parameters.timeout_delay *= 2;
+                debug!("new timeout value is {}", self.parameters.timeout_delay);
+            }
+            
             self.timer = Timer::new(self.parameters.timeout_delay);
         } else {
             self.timer.reset();
@@ -682,7 +688,16 @@ impl Core {
                 }
             }
             AsyncEffectType::Egress => {
-                self.egress_delayed_msgs.push_back((message, author));
+                //self.egress_delayed_msgs.push_back((message, author));
+                let curr = Instant::now().elapsed().as_millis();
+                let wake_time = curr + self.egress_penalty as u128;
+                self.egress_delayed_msgs.push_back((wake_time, message, author));
+
+                if self.egress_timer_futures.is_empty() {
+                    //start timer
+                    let next_wake = Timer::new(self.egress_penalty);
+                    self.egress_timer_futures.push(Box::pin(next_wake));
+                }
             }
 
             _ => {
@@ -761,10 +776,10 @@ impl Core {
                         debug!("asynchrony type is {:?}", self.asynchrony_type);
                         self.current_effect_type = self.asynchrony_type.pop_front().unwrap();
 
-                        if self.current_effect_type == AsyncEffectType::Egress {
+                        /*if self.current_effect_type == AsyncEffectType::Egress {
                             // Start the first egress timer
                             self.egress_timer.reset();
-                        }
+                        }*/
                     }
 
                     if !self.during_simulated_asynchrony {
@@ -802,7 +817,7 @@ impl Core {
                         if self.current_effect_type == AsyncEffectType::Egress {
                             //Send all.
                             while !self.egress_delayed_msgs.is_empty() {
-                                let (msg, author) = self.egress_delayed_msgs.pop_front().unwrap();
+                                let (_, msg, author) = self.egress_delayed_msgs.pop_front().unwrap();
                                 debug!("sending delayed egress message");
                                 self.send_msg_normal(msg, author).await;
                             }
@@ -814,7 +829,41 @@ impl Core {
                     Ok(())
                 },
 
-                () = &mut self.egress_timer => {
+                Some(()) = self.egress_timer_futures.next() => {
+                    
+                    //If delayed messages non empty. Pop head and send. //pop all other heads that are below current time
+                    if !self.egress_delayed_msgs.is_empty() {
+                        let curr = Instant::now().elapsed().as_millis();
+                        
+                        while !self.egress_delayed_msgs.is_empty() {
+                            //pop head and send
+                            let (_, msg, author) = self.egress_delayed_msgs.pop_front().unwrap();
+                            debug!("sending delayed message");
+                            self.send_msg_normal(msg, author).await;
+
+                            //look at next top; if its above wake => break.
+                            if self.egress_delayed_msgs.is_empty() || self.egress_delayed_msgs.front().unwrap().0 > curr {
+                                break;
+                            }
+                        }
+
+                        if !self.egress_delayed_msgs.is_empty() {
+                            //Start timer for next head remaining.
+                            let (wake_time, _, _) = self.egress_delayed_msgs.front().unwrap();
+                            let duration : u64 = (*wake_time - curr) as u64; 
+                            let next_wake = Timer::new(duration);
+                            self.egress_timer_futures.push(Box::pin(next_wake));
+                        }
+                              
+                    }
+                    
+
+                
+                    Ok(())
+
+                },
+
+                /*() = &mut self.egress_timer => {
                     if self.during_simulated_asynchrony {
                         //Send all.
                         while !self.egress_delayed_msgs.is_empty() {
@@ -825,7 +874,7 @@ impl Core {
                         self.egress_timer.reset();
                     }
                     Ok(())
-                },
+                },*/
 
                 /*Some(()) = self.async_timer_futures.next() => {
                     self.during_simulated_asynchrony = !self.during_simulated_asynchrony; 
