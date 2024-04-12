@@ -855,6 +855,7 @@ impl Core {
                             let duration : u64 = (*wake_time - curr) as u64; 
                             let next_wake = Timer::new(duration);
                             self.egress_timer_futures.push(Box::pin(next_wake));
+                            debug!("next wake time is {}", wake_time);
                         }
                               
                     }
