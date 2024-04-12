@@ -705,7 +705,9 @@ impl Core {
                     self.egress_timer_futures.push(Box::pin(next_wake));
                 }*/
                 let egress_end_time = Instant::now().checked_add(Duration::from_millis(self.egress_penalty)).unwrap();
+                debug!("msg egress end time is {:?}", egress_end_time);
                 let actual_send_time = egress_end_time.min(self.current_egress_end);
+                debug!("msg actual send time is {:?}", actual_send_time);
                 self.egress_delay_queue.insert_at((message, author), actual_send_time);
                 
             }
@@ -790,6 +792,7 @@ impl Core {
                             // Start the first egress timer
                             //self.egress_timer.reset();
                             self.current_egress_end = Instant::now().checked_add(Duration::from_millis(self.asynchrony_duration.pop_front().unwrap())).unwrap();
+                            debug!("End of egress is {:?}", self.current_egress_end);
                         }
                     }
 
@@ -842,6 +845,7 @@ impl Core {
                 },
 
                 Some(item) = self.egress_delay_queue.next() => {
+                    debug!("egress msg expired, sending normally");
                     let (message, author) = item.into_inner();
                     self.send_msg_normal(message, author).await;
                     Ok(())
