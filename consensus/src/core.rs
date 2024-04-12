@@ -17,10 +17,11 @@ use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::collections::{HashSet, VecDeque};
 use std::pin::Pin;
-use std::time::Instant;
+//use std::time::Instant;
 use store::Store;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::time::{sleep, Duration};
+use tokio::time::{sleep, Duration, Instant};
+use tokio_util::time::DelayQueue;
 
 #[cfg(test)]
 #[path = "tests/core_tests.rs"]
@@ -96,9 +97,11 @@ pub struct Core {
     //For egress
     egress_penalty: u64, //the number of ms of egress penalty.
     //egress_timer: Timer,
-    egress_delayed_msgs: VecDeque<(u128, ConsensusMessage, Option<PublicKey>)>,
+    //egress_delayed_msgs: VecDeque<(u128, ConsensusMessage, Option<PublicKey>)>,
     //egress_delayed_msgs: VecDeque<(ConsensusMessage, Option<PublicKey>)>,
-    egress_timer_futures: FuturesUnordered<Pin<Box<dyn Future<Output = ()> + Send>>>,
+    //egress_timer_futures: FuturesUnordered<Pin<Box<dyn Future<Output = ()> + Send>>>,
+    egress_delay_queue: DelayQueue<(ConsensusMessage, Option<PublicKey>)>,
+    current_egress_end: Instant,
     // Timeouts
     use_exponential_timeouts: bool,
     original_timeout: u64,
@@ -165,8 +168,10 @@ impl Core {
             partition_delayed_msgs: VecDeque::new(),
             egress_penalty,
             //egress_timer: Timer::new(egress_penalty),
-            egress_delayed_msgs: VecDeque::new(),
-            egress_timer_futures: FuturesUnordered::new(),
+            //egress_delayed_msgs: VecDeque::new(),
+            egress_delay_queue: DelayQueue::new(),
+            current_egress_end: Instant::now(),
+            //egress_timer_futures: FuturesUnordered::new(),
             use_exponential_timeouts,
             original_timeout: timeout_value,
         }
@@ -280,7 +285,7 @@ impl Core {
                     }
 
                     debug!("partition pks are {:?}", self.partition_public_keys);
-                } 
+                }
             }
 
         }
@@ -690,7 +695,7 @@ impl Core {
             }
             AsyncEffectType::Egress => {
                 //self.egress_delayed_msgs.push_back((message, author));
-                let curr = Instant::now().elapsed().as_millis();
+                /*let curr = Instant::now().elapsed().as_millis();
                 let wake_time = curr + self.egress_penalty as u128;
                 self.egress_delayed_msgs.push_back((wake_time, message, author));
 
@@ -698,7 +703,11 @@ impl Core {
                     //start timer
                     let next_wake = Timer::new(self.egress_penalty);
                     self.egress_timer_futures.push(Box::pin(next_wake));
-                }
+                }*/
+                let egress_end_time = Instant::now().checked_add(Duration::from_millis(self.egress_penalty)).unwrap();
+                let actual_send_time = egress_end_time.min(self.current_egress_end);
+                self.egress_delay_queue.insert_at((message, author), actual_send_time);
+                
             }
 
             _ => {
@@ -777,10 +786,11 @@ impl Core {
                         debug!("asynchrony type is {:?}", self.asynchrony_type);
                         self.current_effect_type = self.asynchrony_type.pop_front().unwrap();
 
-                        /*if self.current_effect_type == AsyncEffectType::Egress {
+                        if self.current_effect_type == AsyncEffectType::Egress {
                             // Start the first egress timer
-                            self.egress_timer.reset();
-                        }*/
+                            //self.egress_timer.reset();
+                            self.current_egress_end = Instant::now().checked_add(Duration::from_millis(self.asynchrony_duration.pop_front().unwrap())).unwrap();
+                        }
                     }
 
                     if !self.during_simulated_asynchrony {
@@ -817,12 +827,12 @@ impl Core {
                         //Egress delay
                         if self.current_effect_type == AsyncEffectType::Egress {
                             //Send all.
-                            while !self.egress_delayed_msgs.is_empty() {
+                            /*while !self.egress_delayed_msgs.is_empty() {
                                 let (_, msg, author) = self.egress_delayed_msgs.pop_front().unwrap();
                                 //let (msg, author) = self.egress_delayed_msgs.pop_front().unwrap();
                                 debug!("sending delayed egress message");
                                 self.send_msg_normal(msg, author).await;
-                            }
+                            }*/
                         }
 
                         // Turn off the async effect type
@@ -831,7 +841,13 @@ impl Core {
                     Ok(())
                 },
 
-                Some(()) = self.egress_timer_futures.next() => {
+                Some(item) = self.egress_delay_queue.next() => {
+                    let (message, author) = item.into_inner();
+                    self.send_msg_normal(message, author).await;
+                    Ok(())
+                },
+
+                /*Some(()) = self.egress_timer_futures.next() => {
                     
                     //If delayed messages non empty. Pop head and send. //pop all other heads that are below current time
                     if !self.egress_delayed_msgs.is_empty() {
@@ -864,7 +880,7 @@ impl Core {
                 
                     Ok(())
 
-                },
+                },*/
 
                 /*() = &mut self.egress_timer => {
                     if self.during_simulated_asynchrony {
