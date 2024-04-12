@@ -99,6 +99,7 @@ pub struct Core {
     egress_delayed_msgs: VecDeque<(ConsensusMessage, Option<PublicKey>)>,
     // Timeouts
     use_exponential_timeouts: bool,
+    original_timeout: u64,
 }
 
 impl Core {
@@ -124,6 +125,7 @@ impl Core {
         let affected_nodes = parameters.affected_nodes.clone();
         let egress_penalty = parameters.egress_penalty;
         let use_exponential_timeouts = parameters.use_exponential_timeouts;
+        let timeout_value = parameters.timeout_delay;
         
         let timer = Timer::new(parameters.timeout_delay);
         Self {
@@ -163,6 +165,7 @@ impl Core {
             egress_timer: Timer::new(egress_penalty),
             egress_delayed_msgs: VecDeque::new(),
             use_exponential_timeouts,
+            original_timeout: timeout_value,
         }
     }
 
@@ -216,6 +219,9 @@ impl Core {
         if self.simulate_asynchrony && block.round == 2 && !self.already_set_timers {
             debug!("added async timers");
             self.already_set_timers = true;
+            // Reset the timeout value
+            self.parameters.timeout_delay = self.original_timeout;
+            
             debug!("asynchrony start is {:?}", self.asynchrony_start);
             for i in 0..self.asynchrony_start.len() {
                 if self.asynchrony_type[i] == AsyncEffectType::Egress {
