@@ -102,6 +102,7 @@ pub struct Core {
     //egress_timer_futures: FuturesUnordered<Pin<Box<dyn Future<Output = ()> + Send>>>,
     egress_delay_queue: DelayQueue<(ConsensusMessage, Option<PublicKey>)>,
     current_egress_end: Instant,
+    propose_delay_queue: DelayQueue<Option<TC>>,
     // Timeouts
     use_exponential_timeouts: bool,
     original_timeout: u64,
@@ -171,6 +172,7 @@ impl Core {
             //egress_delayed_msgs: VecDeque::new(),
             egress_delay_queue: DelayQueue::new(),
             current_egress_end: Instant::now(),
+            propose_delay_queue: DelayQueue::new(),
             //egress_timer_futures: FuturesUnordered::new(),
             use_exponential_timeouts,
             original_timeout: timeout_value,
@@ -397,7 +399,8 @@ impl Core {
 
             // Make a new block if we are the next leader.
             if self.name == self.leader_elector.get_leader(self.round) {
-                self.generate_proposal(None).await?;
+                let egress_path = self.during_simulated_asynchrony && self.current_effect_type == AsyncEffectType::Egress;
+                self.generate_proposal(None, egress_path).await?;
             }
         }
         Ok(())
@@ -436,7 +439,8 @@ impl Core {
 
             // Make a new block if we are the next leader.
             if self.name == self.leader_elector.get_leader(self.round) {
-                self.generate_proposal(Some(tc)).await?;
+                let egress_path = self.during_simulated_asynchrony && self.current_effect_type == AsyncEffectType::Egress;
+                self.generate_proposal(Some(tc), egress_path).await?;
             }
         }
         Ok(())
@@ -458,7 +462,17 @@ impl Core {
     // -- End Pacemaker --
 
     #[async_recursion]
-    async fn generate_proposal(&mut self, tc: Option<TC>) -> ConsensusResult<()> {
+    async fn generate_proposal(&mut self, tc: Option<TC>, egress_path: bool) -> ConsensusResult<()> {
+        if egress_path {
+            let egress_end_time = Instant::now().checked_add(Duration::from_millis(self.egress_penalty)).unwrap();
+            debug!("egress penalty is {:?}", self.egress_penalty);
+            debug!("propose msg egress end time is {:?}", egress_end_time);
+            let actual_send_time = egress_end_time.min(self.current_egress_end);
+            debug!("msg actual send time is {:?}", actual_send_time);
+
+            self.propose_delay_queue.insert_at(tc.clone(), Instant::now().checked_add(Duration::from_millis(self.egress_penalty)).unwrap());
+            return Ok(())
+        }
         /*if self.during_simulated_asynchrony {
             debug!("Simulating asynchrony skipping sending a block in round {:?}, will trigger view change", self.round);
             self.async_last_tc = tc;
@@ -500,7 +514,7 @@ impl Core {
             &self.committee,
         )
         .await?;*/
-        self.send_msg(message, None).await;
+        self.send_msg_normal(message, None).await;
         self.process_block(&block).await?;
 
         // Wait for the minimum block delay.
@@ -636,7 +650,8 @@ impl Core {
     async fn handle_tc(&mut self, tc: TC) -> ConsensusResult<()> {
         self.advance_round(tc.round).await;
         if self.name == self.leader_elector.get_leader(self.round) {
-            self.generate_proposal(Some(tc)).await?;
+            let egress_path = self.during_simulated_asynchrony && self.current_effect_type == AsyncEffectType::Egress;
+            self.generate_proposal(Some(tc), egress_path).await?;
         }
         Ok(())
     }
@@ -760,7 +775,7 @@ impl Core {
         // Also, schedule a timer in case we don't hear from the leader.
         self.timer.reset();
         if self.name == self.leader_elector.get_leader(self.round) {
-            self.generate_proposal(None)
+            self.generate_proposal(None, false)
                 .await
                 .expect("Failed to send the first block");
         }
@@ -852,30 +867,13 @@ impl Core {
                 Some(item) = self.egress_delay_queue.next() => {
                     debug!("egress msg expired, sending normally");
                     let (message, author) = item.into_inner();
-                    let new_msg = match message {
-                        ConsensusMessage::Propose(block) => {
-                            let mut new_payload = self 
-                                .mempool_driver
-                                .get(self.parameters.max_payload_size)
-                                .await;
-                            /*for item in block.payload.iter() {
-                                new_payload.push(item.clone());
-                            }*/
-                            
-                            let new_block = Block::new(
-                                block.qc,
-                                block.tc,
-                                self.name,
-                                block.round,
-                                new_payload,
-                                self.signature_service.clone(),
-                            )
-                            .await; 
-                            ConsensusMessage::Propose(new_block)
-                        },
-                        _ => message,
-                    };
-                    self.send_msg_normal(new_msg, author).await;
+                    self.send_msg_normal(message, author).await;
+                    Ok(())
+                },
+
+                Some(item) = self.propose_delay_queue.next() => {
+                    let tc = item.into_inner();
+                    let _ = self.generate_proposal(tc, false).await;
                     Ok(())
                 },
 
