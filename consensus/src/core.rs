@@ -852,7 +852,28 @@ impl Core {
                 Some(item) = self.egress_delay_queue.next() => {
                     debug!("egress msg expired, sending normally");
                     let (message, author) = item.into_inner();
-                    self.send_msg_normal(message, author).await;
+                    let new_msg = match message {
+                        ConsensusMessage::Propose(block) => {
+                            let mut new_payload = self 
+                                .mempool_driver
+                                .get(self.parameters.max_payload_size)
+                                .await;
+                            new_payload.extend(block.payload);
+                            
+                            let new_block = Block::new(
+                                block.qc,
+                                block.tc,
+                                self.name,
+                                block.round,
+                                new_payload,
+                                self.signature_service.clone(),
+                            )
+                            .await; 
+                            ConsensusMessage::Propose(new_block)
+                        },
+                        _ => message,
+                    };
+                    self.send_msg_normal(new_msg, author).await;
                     Ok(())
                 },
 
