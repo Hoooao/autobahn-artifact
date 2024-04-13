@@ -237,6 +237,8 @@ impl Core {
                     // Skip nodes that are not affected by the asynchrony
                     if index >= self.affected_nodes[i] as usize {
                         continue;
+                    } else {
+                        debug!("egress affects this node");
                     }
                 }
 
@@ -791,7 +793,9 @@ impl Core {
                         if self.current_effect_type == AsyncEffectType::Egress {
                             // Start the first egress timer
                             //self.egress_timer.reset();
-                            self.current_egress_end = Instant::now().checked_add(Duration::from_millis(self.asynchrony_duration.pop_front().unwrap())).unwrap();
+                            let async_duration = self.asynchrony_duration.pop_front().unwrap();
+                            debug!("Egress duration is {:?}", async_duration);
+                            self.current_egress_end = Instant::now().checked_add(Duration::from_millis(async_duration).unwrap();
                             debug!("End of egress is {:?}", self.current_egress_end);
                         }
                     }
