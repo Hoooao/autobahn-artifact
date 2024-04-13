@@ -858,9 +858,9 @@ impl Core {
                                 .mempool_driver
                                 .get(self.parameters.max_payload_size)
                                 .await;
-                            for item in block.payload.iter() {
+                            /*for item in block.payload.iter() {
                                 new_payload.push(item.clone());
-                            }
+                            }*/
                             
                             let new_block = Block::new(
                                 block.qc,
