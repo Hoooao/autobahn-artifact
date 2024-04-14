@@ -500,7 +500,7 @@ impl Core {
             &self.committee,
         )
         .await?;*/
-        self.send_msg_normal(message, None).await;
+        self.send_msg(message, None).await;
         self.process_block(&block).await?;
 
         // Wait for the minimum block delay.
