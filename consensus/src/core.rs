@@ -447,8 +447,24 @@ impl Core {
         if round < self.round {
             return;
         }
+
+        if self.use_exponential_timeouts {
+            // Don't double the timeout in the first few rounds
+            if self.round < 4 {
+                self.parameters.timeout_delay = self.original_timeout;
+            } else {
+                // Double the timeout unless in early rounds
+                self.parameters.timeout_delay *= 2;
+                debug!("new timeout value is {}", self.parameters.timeout_delay);
+            }
+            
+            self.timer = Timer::new(self.parameters.timeout_delay);
+        } else {
+            self.timer.reset();
+        }
+
         // Reset the timer and advance round.
-        self.timer.reset();
+        //self.timer.reset();
         self.round = round + 1;
         debug!("Moved to round {}", self.round);
 
