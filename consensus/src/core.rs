@@ -720,20 +720,9 @@ impl Core {
                 debug!("current time is {:?}", Instant::now());
                 debug!("egress penalty is {:?}", self.egress_penalty);
                 debug!("msg egress end time is {:?}", egress_end_time);
-                /*let actual_send_time = egress_end_time.min(self.current_egress_end);
+                let actual_send_time = egress_end_time.min(self.current_egress_end);
                 debug!("msg actual send time is {:?}", actual_send_time);
-                self.egress_delay_queue.insert_at((message, author), actual_send_time);*/
-
-                if egress_end_time < self.current_egress_end {
-                    debug!("we are sleeping for egress delay");
-                    sleep(Duration::from_millis(self.egress_penalty)).await;
-                } else {
-                    debug!("sleeping for less than egress delay");
-                    sleep(self.current_egress_end - Instant::now()).await;
-                }
-
-                self.send_msg_normal(message, author).await;
-                
+                self.egress_delay_queue.insert_at((message, author), actual_send_time);
             }
 
             _ => {
