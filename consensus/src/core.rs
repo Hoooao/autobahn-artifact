@@ -350,7 +350,7 @@ impl Core {
         )
         .await;
         debug!("Created {:?}", timeout);
-        if self.use_exponential_timeouts {
+        /*if self.use_exponential_timeouts {
             // Don't double the timeout in the first few rounds
             if self.round < 4 {
                 self.parameters.timeout_delay = self.original_timeout;
@@ -363,7 +363,7 @@ impl Core {
             self.timer = Timer::new(self.parameters.timeout_delay);
         } else {
             self.timer.reset();
-        }
+        }*/
         
         let message = ConsensusMessage::Timeout(timeout.clone());
         /*Synchronizer::transmit(
