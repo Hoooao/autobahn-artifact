@@ -716,7 +716,8 @@ impl Core {
                     let next_wake = Timer::new(self.egress_penalty);
                     self.egress_timer_futures.push(Box::pin(next_wake));
                 }*/
-                let egress_end_time = Instant::now().checked_add(Duration::from_millis(self.egress_penalty)).unwrap();
+                let egress_end_time = Instant::now() + Duration::from_millis(self.egress_penalty);
+                debug!("current time is {:?}", Instant::now());
                 debug!("egress penalty is {:?}", self.egress_penalty);
                 debug!("msg egress end time is {:?}", egress_end_time);
                 let actual_send_time = egress_end_time.min(self.current_egress_end);
@@ -806,7 +807,8 @@ impl Core {
                             //self.egress_timer.reset();
                             let async_duration = self.asynchrony_duration.pop_front().unwrap();
                             debug!("Egress duration is {:?}", async_duration);
-                            self.current_egress_end = Instant::now().checked_add(Duration::from_millis(async_duration)).unwrap();
+                            //self.current_egress_end = Instant::now().checked_add(Duration::from_millis(async_duration)).unwrap();
+                            self.current_egress_end = Instant::now() + Duration::from_millis(async_duration);
                             debug!("End of egress is {:?}", self.current_egress_end);
                         }
                     }
