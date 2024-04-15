@@ -242,7 +242,7 @@ impl Core {
                     }
                 }
 
-                if self.asynchrony_type[i] == AsyncEffectType::Failure {
+                if self.asynchrony_type[i] == AsyncEffectType::Failure && !self.use_exponential_timeouts {
                     let mut keys: Vec<_> = self.committee.authorities.keys().cloned().collect();
                     keys.sort();
                     let index = keys.binary_search(&self.name).unwrap();
