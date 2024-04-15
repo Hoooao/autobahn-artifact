@@ -207,8 +207,10 @@ impl Core {
             let mut num_elements = 0;
             let mut payload_vec = Vec::new();
 
+            debug!("max size for batch is {:?}", max);
             for (dig, payload) in self.queue.iter() {
                 size += payload.size();
+                debug!("payload size is {:?}", payload.size());
                 payload_vec.push((dig.clone(), payload.clone()));
                 num_elements += 1;
                 if size >= max {
