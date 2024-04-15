@@ -242,7 +242,7 @@ impl Core {
                     }
                 }
 
-                if self.asynchrony_type[i] == AsyncEffectType::Failure && !self.use_exponential_timeouts {
+                if self.asynchrony_type[i] == AsyncEffectType::Failure {
                     let mut keys: Vec<_> = self.committee.authorities.keys().cloned().collect();
                     keys.sort();
                     let index = keys.binary_search(&self.name).unwrap();
@@ -665,7 +665,11 @@ impl Core {
                 
                     _ => { debug!("send all other messages")}
                 }*/
-                panic!("TempBlip currently deprecated");
+                //panic!("TempBlip currently deprecated");
+                if self.round >= 400 && self.round <= 401 && self.name == self.leader_elector.get_leader(self.round) {
+                    debug!("dropping message");
+                    return;
+                }
             }
             AsyncEffectType::Failure => {
                 //drop message
