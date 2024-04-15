@@ -352,7 +352,7 @@ impl Core {
         debug!("Created {:?}", timeout);
         if self.use_exponential_timeouts {
             // Don't double the timeout in the first few rounds
-            if self.round < 400 {
+            if self.round < 4 {
                 self.parameters.timeout_delay = self.original_timeout;
             } else {
                 // Double the timeout unless in early rounds
@@ -669,6 +669,9 @@ impl Core {
                 if self.round >= 400 && self.round <= 401 && self.name == self.leader_elector.get_leader(self.round) {
                     debug!("dropping message");
                     return;
+                } else {
+                    debug!("message sent normally");
+                    self.send_msg_normal(message, author).await;
                 }
             }
             AsyncEffectType::Failure => {
