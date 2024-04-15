@@ -452,6 +452,8 @@ impl Core {
         self.timer.reset();
         self.round = round + 1;
         debug!("Moved to round {}", self.round);
+        debug!("Time between rounds is {:?}", self.current_time.elapsed());
+        self.current_time = Instant::now();
 
         // Cleanup the vote aggregator.
         self.aggregator.cleanup(&self.round);
