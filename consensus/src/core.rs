@@ -9,20 +9,36 @@ use crate::timer::Timer;
 use async_recursion::async_recursion;
 use crypto::Hash as _;
 use crypto::{Digest, PublicKey, SignatureService};
+use futures::stream::FuturesUnordered;
+use futures::{Future, StreamExt};
 use log::{debug, error, info, warn};
 use network::NetMessage;
 use serde::{Deserialize, Serialize};
+use tokio_util::time::DelayQueue;
 use std::cmp::max;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
+use std::pin::Pin;
 use store::Store;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::time::{sleep, Duration};
+use tokio::time::{sleep, Duration, Instant};
 
 #[cfg(test)]
 #[path = "tests/core_tests.rs"]
 pub mod core_tests;
 
 pub type RoundNumber = u64;
+
+#[derive(Clone, PartialEq, std::fmt::Debug)]
+pub enum AsyncEffectType {
+    Off = 0,
+    TempBlip = 1, //Send nothing for x seconds, and then release all messages
+    Failure = 2, //Send nothing for x seconds  //TODO: Combine with TempBlip?
+    Partition = 3, //Send nothing to partitioned replicas for x seconds, then release all
+    Egress = 4,  //For x seconds, delay all outbound messages by some amount
+}
+fn uint_to_enum(v: u8) -> AsyncEffectType {
+    unsafe { std::mem::transmute(v) }
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ConsensusMessage {
@@ -53,6 +69,29 @@ pub struct Core {
     high_qc: QC,
     timer: Timer,
     aggregator: Aggregator,
+
+    simulate_asynchrony: bool, //Simulating an async event
+    asynchrony_type: VecDeque<AsyncEffectType>, //Type of effects: 0 for delay full async duration, 1 for partition, 2 for  failure, 3 for egress delay. Will start #type many blips.
+    asynchrony_start: VecDeque<u64>,     //Start of async period   //offset from current time (in seconds) when to start next async effect
+    asynchrony_duration: VecDeque<u64>,  //Duration of async period
+    affected_nodes: VecDeque<u64>, ////first k nodes experience specified async behavior.
+    during_simulated_asynchrony: bool,  //Currently in async period?
+    current_effect_type: AsyncEffectType, //Currently active effect.
+
+    async_timer_futures: FuturesUnordered<Pin<Box<dyn Future<Output = ()> + Send>>>, //Used to turn on/off period  //Note: (slot, view) are not needed, it's just to re-use existing Timer
+    already_set_timers: bool, //To avoid setting multiple timers
+    current_time: Instant,
+
+    // For partition
+    partition_public_keys: HashSet<PublicKey>,
+    partition_delayed_msgs: VecDeque<(ConsensusMessage, Option<PublicKey>)>, //(msg, height, author, consensus/car path)
+    //For egress
+    egress_penalty: u64, //the number of ms of egress penalty.
+    egress_delay_queue: DelayQueue<(ConsensusMessage, Option<PublicKey>)>,
+    current_egress_end: Instant,
+    // Timeouts
+    use_exponential_timeouts: bool,
+    original_timeout: u64,
 }
 
 impl Core {
@@ -72,6 +111,14 @@ impl Core {
     ) -> Self {
         let aggregator = Aggregator::new(committee.clone());
         let timer = Timer::new(parameters.timeout_delay);
+        let simulate_asynchrony = parameters.simulate_asynchrony;
+        let async_type = parameters.async_type.clone();
+        let asynchrony_start = parameters.asynchrony_start.clone();
+        let asynchrony_duration = parameters.asynchrony_duration.clone();
+        let affected_nodes = parameters.affected_nodes.clone();
+        let egress_penalty = parameters.egress_penalty;
+        let use_exponential_timeouts = parameters.use_exponential_timeouts;
+        let timeout_value = parameters.timeout_delay;
         Self {
             name,
             committee,
@@ -91,6 +138,23 @@ impl Core {
             high_qc: QC::genesis(),
             timer,
             aggregator,
+            simulate_asynchrony,
+            asynchrony_type: async_type.iter().map(|v| uint_to_enum(*v)).collect(),
+            asynchrony_start,
+            asynchrony_duration,
+            affected_nodes,
+            async_timer_futures: FuturesUnordered::new(),
+            during_simulated_asynchrony: false,
+            current_effect_type: AsyncEffectType::Off,
+            already_set_timers: false,
+            current_time: Instant::now(),
+            partition_public_keys: HashSet::new(),
+            partition_delayed_msgs: VecDeque::new(),
+            egress_penalty,
+            egress_delay_queue: DelayQueue::new(),
+            current_egress_end: Instant::now(),
+            use_exponential_timeouts,
+            original_timeout: timeout_value,
         }
     }
 
@@ -128,6 +192,75 @@ impl Core {
     async fn commit(&mut self, block: Block) -> ConsensusResult<()> {
         if self.last_committed_round >= block.round {
             return Ok(());
+        }
+
+         // Start simulating asynchrony
+         if self.simulate_asynchrony && block.round == 2 && !self.already_set_timers {
+            debug!("added async timers");
+            self.already_set_timers = true;
+            
+            debug!("asynchrony start is {:?}", self.asynchrony_start);
+            for i in 0..self.asynchrony_start.len() {
+                if self.asynchrony_type[i] == AsyncEffectType::Egress {
+                    let mut keys: Vec<_> = self.committee.authorities.keys().cloned().collect();
+                    keys.sort();
+                    let index = keys.binary_search(&self.name).unwrap();
+                    // Skip nodes that are not affected by the asynchrony
+                    if index >= self.affected_nodes[i] as usize {
+                        continue;
+                    } else {
+                        debug!("egress affects this node");
+                    }
+                }
+
+                if self.asynchrony_type[i] == AsyncEffectType::Failure {
+                    let mut keys: Vec<_> = self.committee.authorities.keys().cloned().collect();
+                    keys.sort();
+                    let index = keys.binary_search(&self.name).unwrap();
+                    // Skip nodes that are not affected by the asynchrony
+                    if index >= self.affected_nodes[i] as usize {
+                        continue;
+                    }
+                }
+                        
+                let start_offset = self.asynchrony_start[i];
+                let end_offset = start_offset +  self.asynchrony_duration[i];
+                        
+                let async_start = Timer::new(start_offset);
+                let async_end = Timer::new(end_offset);
+
+                self.async_timer_futures.push(Box::pin(async_start));
+                self.async_timer_futures.push(Box::pin(async_end));
+
+                if self.asynchrony_type[i] == AsyncEffectType::Partition {
+                    let mut keys: Vec<_> = self.committee.authorities.keys().cloned().collect();
+                    keys.sort();
+                    let index = keys.binary_search(&self.name).unwrap();
+
+                    // Figure out which partition we are in, partition_nodes indicates when the left partition ends
+                    let mut start: usize = 0;
+                    let mut end: usize = 0;
+                        
+                    // We are in the right partition
+                    if index > self.affected_nodes[i] as usize - 1 {
+                        start = self.affected_nodes[i] as usize;
+                        end = keys.len();
+                            
+                    } else {
+                        // We are in the left partition
+                        start = 0;
+                        end = self.affected_nodes[i] as usize;
+                    }
+
+                    // These are the nodes in our side of the partition
+                    for j in start..end {
+                        self.partition_public_keys.insert(keys[j]);
+                    }
+
+                    debug!("partition pks are {:?}", self.partition_public_keys);
+                }
+            }
+
         }
 
         let mut to_commit = VecDeque::new();
@@ -186,16 +319,31 @@ impl Core {
         )
         .await;
         debug!("Created {:?}", timeout);
-        self.timer.reset();
+        if self.use_exponential_timeouts {
+            // Don't double the timeout in the first few rounds
+            if self.round < 4 {
+                self.parameters.timeout_delay = self.original_timeout;
+            } else {
+                // Double the timeout unless in early rounds
+                self.parameters.timeout_delay *= 2;
+                debug!("new timeout value is {}", self.parameters.timeout_delay);
+            }
+            
+            self.timer = Timer::new(self.parameters.timeout_delay);
+        } else {
+            self.timer.reset();
+        }
+        //self.timer.reset();
         let message = ConsensusMessage::Timeout(timeout.clone());
-        Synchronizer::transmit(
+        /*Synchronizer::transmit(
             &message,
             &self.name,
             None,
             &self.network_channel,
             &self.committee,
         )
-        .await?;
+        .await?;*/
+        self.send_msg(message, None).await;
         self.handle_timeout(&timeout).await
     }
 
@@ -245,14 +393,15 @@ impl Core {
 
             // Broadcast the TC.
             let message = ConsensusMessage::TC(tc.clone());
-            Synchronizer::transmit(
+            /*Synchronizer::transmit(
                 &message,
                 &self.name,
                 None,
                 &self.network_channel,
                 &self.committee,
             )
-            .await?;
+            .await?;*/
+            self.send_msg(message, None).await;
 
             // Make a new block if we are the next leader.
             if self.name == self.leader_elector.get_leader(self.round) {
@@ -306,14 +455,15 @@ impl Core {
 
         // Process our new block and broadcast it.
         let message = ConsensusMessage::Propose(block.clone());
-        Synchronizer::transmit(
+        /*Synchronizer::transmit(
             &message,
             &self.name,
             None,
             &self.network_channel,
             &self.committee,
         )
-        .await?;
+        .await?;*/
+        self.send_msg(message, None).await;
         self.process_block(&block).await?;
 
         // Wait for the minimum block delay.
@@ -373,14 +523,15 @@ impl Core {
                 self.handle_vote(&vote).await?;
             } else {
                 let message = ConsensusMessage::Vote(vote);
-                Synchronizer::transmit(
+                /*Synchronizer::transmit(
                     &message,
                     &self.name,
                     Some(&next_leader),
                     &self.network_channel,
                     &self.committee,
                 )
-                .await?;
+                .await?;*/
+                self.send_msg(message, Some(next_leader)).await;
             }
         }
         Ok(())
@@ -429,14 +580,15 @@ impl Core {
         if let Some(bytes) = self.store.read(digest.to_vec()).await? {
             let block = bincode::deserialize(&bytes)?;
             let message = ConsensusMessage::Propose(block);
-            Synchronizer::transmit(
+            /*Synchronizer::transmit(
                 &message,
                 &self.name,
                 Some(&sender),
                 &self.network_channel,
                 &self.committee,
             )
-            .await?;
+            .await?;*/
+            self.send_msg(message, Some(sender)).await;
         }
         Ok(())
     }
@@ -447,6 +599,117 @@ impl Core {
             self.generate_proposal(Some(tc)).await?;
         }
         Ok(())
+    }
+
+    pub async fn send_msg(&mut self, message: ConsensusMessage, author: Option<PublicKey>) {
+        
+        //go through enums
+        match self.current_effect_type {
+            AsyncEffectType::Off => {
+                debug!("message sent normally");
+                self.send_msg_normal(message, author).await;
+            }
+            AsyncEffectType::TempBlip => { //Our old handling
+                //add message
+                /*match message {
+                     PrimaryMessage::ConsensusMessage(m) => {
+                         match m.clone() {
+                            ConsensusMessage::Prepare {slot, view, tc, qc_ticket: _, proposals} => {
+                                debug!("Simulating Asynchrony: skip sending Prepare for slot {} view {}. This will trigger a view change", slot, view);
+                                self.async_delayed_prepare = Some(m);
+                            }
+                            _ => {}
+                            }
+                     }
+                
+                    _ => { debug!("send all other messages")}
+                }*/
+                //panic!("TempBlip currently deprecated");
+                if self.round >= 400 && self.round <= 401 && self.name == self.leader_elector.get_leader(self.round) {
+                    debug!("dropping message");
+                    return;
+                } else {
+                    debug!("message sent normally");
+                    self.send_msg_normal(message, author).await;
+                }
+            }
+            AsyncEffectType::Failure => {
+                //drop message
+                debug!("dropping message");
+            }
+            AsyncEffectType::Partition => {
+                match author {
+                    Some(author) => {
+                        if self.partition_public_keys.contains(&author) {
+                            // The receiver is in our partition, so we can send the message directly
+                            debug!("single message during partition, sent normally");
+                            self.send_msg_normal(message, Some(author)).await;
+                        } else {
+                            // The receiver is not in our partition, so we buffer for later
+                            debug!("single message during partition, buffered");
+                            self.partition_delayed_msgs.push_back((message, Some(author)));
+                        }
+                    }
+                    None => {
+                        // Send the message to all nodes in our side of the partition
+                        if self.partition_public_keys.len() > 1 {
+                            self.send_msg_partition(&message, true).await;
+                            debug!("broadcast message during partition, sent to nodes in our partition");
+                        }
+                        
+                        // Buffer the message for the other side of the partition
+                        self.partition_delayed_msgs.push_back((message, None));
+                    }
+                }
+            }
+            AsyncEffectType::Egress => {
+                //self.egress_delayed_msgs.push_back((message, author));
+                /*let curr = Instant::now().elapsed().as_millis();
+                let wake_time = curr + self.egress_penalty as u128;
+                self.egress_delayed_msgs.push_back((wake_time, message, author));
+
+                if self.egress_timer_futures.is_empty() {
+                    //start timer
+                    let next_wake = Timer::new(self.egress_penalty);
+                    self.egress_timer_futures.push(Box::pin(next_wake));
+                }*/
+                let egress_end_time = Instant::now() + Duration::from_millis(self.egress_penalty);
+                debug!("current time is {:?}", Instant::now());
+                debug!("egress penalty is {:?}", self.egress_penalty);
+                debug!("msg egress end time is {:?}", egress_end_time);
+                let actual_send_time = egress_end_time.min(self.current_egress_end);
+                debug!("msg actual send time is {:?}", actual_send_time);
+                self.egress_delay_queue.insert_at((message, author), actual_send_time);
+            }
+
+            _ => {
+                panic!("not a valid effect")
+            }
+        }
+    }
+
+    pub async fn send_msg_normal(&mut self, message: ConsensusMessage, author: Option<PublicKey>) {
+        let _ = Synchronizer::transmit(
+            &message,
+            &self.name,
+            author.as_ref(),
+            &self.network_channel,
+            &self.committee,
+        )
+        .await;
+    }
+
+    pub async fn send_msg_partition(&mut self, message: &ConsensusMessage, our_partition: bool) {
+        let _ = Synchronizer::transmit_partition(
+            message,
+            &self.name,
+            &self.network_channel,
+            &self.committee,
+            our_partition,
+            &self.partition_public_keys,
+        )
+        .await;
+        
     }
 
     pub async fn run(&mut self) {
@@ -473,6 +736,83 @@ impl Core {
                         ConsensusMessage::SyncRequest(digest, sender) => self.handle_sync_request(digest, sender).await
                     }
                 },
+
+                Some(()) = self.async_timer_futures.next() => {
+                    self.during_simulated_asynchrony = !self.during_simulated_asynchrony; 
+
+                    debug!("Time elapsed is {:?}", self.current_time.elapsed()); 
+                    self.current_time = Instant::now();
+
+                    if self.during_simulated_asynchrony {
+                        debug!("asynchrony type is {:?}", self.asynchrony_type);
+                        self.current_effect_type = self.asynchrony_type.pop_front().unwrap();
+
+                        if self.current_effect_type == AsyncEffectType::Egress {
+                            // Start the first egress timer
+                            //self.egress_timer.reset();
+                            let async_duration = self.asynchrony_duration.pop_front().unwrap();
+                            debug!("Egress duration is {:?}", async_duration);
+                            //self.current_egress_end = Instant::now().checked_add(Duration::from_millis(async_duration)).unwrap();
+                            self.current_egress_end = Instant::now() + Duration::from_millis(async_duration);
+                            debug!("End of egress is {:?}", self.current_egress_end);
+                        }
+                    }
+
+                    if !self.during_simulated_asynchrony {
+
+                        if self.current_effect_type == AsyncEffectType::TempBlip {
+                              //Send all blocked messages
+                            /*if self.async_delayed_prepare.is_some() {
+                                let last_prop = self.async_delayed_prepare.clone().unwrap();
+                                let still_relevant = match &last_prop { //check whether we're still in a relevant view.
+                                    ConsensusMessage::Prepare {slot, view, tc: _, qc_ticket: _, proposals: _} => view == self.views.get(slot).unwrap_or(&0),
+                                    _ => false,
+                                };
+                                if still_relevant { //try sending it now.
+                                    let _ = self.send_consensus_req(last_prop).await;
+                                }
+                                self.async_delayed_prepare = None;
+                            }*/
+                        }
+                        //Failure
+                        if self.current_effect_type == AsyncEffectType::Failure {
+                            //do nothing
+                        }
+                        //Partition
+                        if self.current_effect_type == AsyncEffectType::Partition {
+                            while !self.partition_delayed_msgs.is_empty() {
+                                debug!("sending messages to other side of partition");
+                                let (msg, author) = self.partition_delayed_msgs.pop_front().unwrap();
+                                match author {
+                                    Some(author) => self.send_msg_normal(msg, Some(author)).await,
+                                    None => self.send_msg_partition(&msg, false).await,
+                                }
+                            }
+                        }
+                        //Egress delay
+                        if self.current_effect_type == AsyncEffectType::Egress {
+                            //Send all.
+                            /*while !self.egress_delayed_msgs.is_empty() {
+                                let (_, msg, author) = self.egress_delayed_msgs.pop_front().unwrap();
+                                //let (msg, author) = self.egress_delayed_msgs.pop_front().unwrap();
+                                debug!("sending delayed egress message");
+                                self.send_msg_normal(msg, author).await;
+                            }*/
+                        }
+
+                        // Turn off the async effect type
+                        self.current_effect_type = AsyncEffectType::Off;                      
+                    }
+                    Ok(())
+                },
+
+                Some(item) = self.egress_delay_queue.next() => {
+                    debug!("egress msg expired, sending normally");
+                    let (message, author) = item.into_inner();
+                    self.send_msg_normal(message, author).await;
+                    Ok(())
+                },
+                
                 () = &mut self.timer => self.local_timeout_round().await,
                 else => break,
             };

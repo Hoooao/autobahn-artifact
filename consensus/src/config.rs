@@ -1,7 +1,7 @@
 use crate::error::{ConsensusError, ConsensusResult};
 use crypto::PublicKey;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::SocketAddr;
 
 pub type Stake = u32;
@@ -13,6 +13,15 @@ pub struct Parameters {
     pub sync_retry_delay: u64,
     pub max_payload_size: usize,
     pub min_block_delay: u64,
+
+    //asynchrony framework parameters:
+    pub simulate_asynchrony: bool,
+    pub async_type: VecDeque<u8>,
+    pub asynchrony_start: VecDeque<u64>,
+    pub asynchrony_duration: VecDeque<u64>,
+    pub affected_nodes: VecDeque<u64>,
+    pub egress_penalty: u64,
+    pub use_exponential_timeouts: bool,
 }
 
 impl Default for Parameters {
@@ -22,6 +31,13 @@ impl Default for Parameters {
             sync_retry_delay: 10_000,
             max_payload_size: 500,
             min_block_delay: 100,
+            simulate_asynchrony: false,
+            async_type: vec![0].into(),
+            asynchrony_start: vec![20_000].into(),
+            asynchrony_duration: vec![10_000].into(),
+            affected_nodes: vec![0].into(),
+            egress_penalty: 0,
+            use_exponential_timeouts: false,
         }
     }
 }
@@ -83,6 +99,15 @@ impl Committee {
         self.authorities
             .values()
             .filter(|x| x.name != *myself)
+            .map(|x| x.address)
+            .collect()
+    }
+
+    pub fn partition_broadcast_addresses(&self, myself: &PublicKey, our_partition: bool, partition_public_keys: &HashSet<PublicKey>) -> Vec<SocketAddr> {
+        self.authorities
+            .values()
+            .filter(|x| x.name != *myself)
+            .filter(|x| (our_partition && partition_public_keys.contains(&x.name)) || (!our_partition && !partition_public_keys.contains(&x.name)))
             .map(|x| x.address)
             .collect()
     }
