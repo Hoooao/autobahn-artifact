@@ -258,7 +258,7 @@ impl Core {
         self.votes_aggregator = VotesAggregator::new();
 
         // Broadcast the new header in a reliable manner.
-        let addresses = self
+        /*let addresses = self
             .committee
             .others_primaries(&self.name)
             .iter()
@@ -270,7 +270,8 @@ impl Core {
         self.cancel_handlers
             .entry(header.round)
             .or_insert_with(Vec::new)
-            .extend(handlers);
+            .extend(handlers);*/
+        self.send_msg(PrimaryMessage::Header(header.clone()), header.round, None).await;
 
         // Process the header.
         self.process_header(&header).await
@@ -334,7 +335,7 @@ impl Core {
                     .await
                     .expect("Failed to process our own vote");
             } else {
-                let address = self
+                /*let address = self
                     .committee
                     .primary(&header.author)
                     .expect("Author of valid header is not in the committee")
@@ -345,7 +346,8 @@ impl Core {
                 self.cancel_handlers
                     .entry(header.round)
                     .or_insert_with(Vec::new)
-                    .push(handler);
+                    .push(handler);*/
+                self.send_msg(PrimaryMessage::Vote(vote), header.round, Some(header.author)).await;
             }
         }
         Ok(())
@@ -363,7 +365,7 @@ impl Core {
             debug!("Assembled {:?}", certificate);
 
             // Broadcast the certificate.
-            let addresses = self
+            /*let addresses = self
                 .committee
                 .others_primaries(&self.name)
                 .iter()
@@ -375,7 +377,8 @@ impl Core {
             self.cancel_handlers
                 .entry(certificate.round())
                 .or_insert_with(Vec::new)
-                .extend(handlers);
+                .extend(handlers);*/
+            self.send_msg(PrimaryMessage::Certificate(certificate.clone()), certificate.round(), None).await;
 
             // Process the new certificate.
             self.process_certificate(certificate)
