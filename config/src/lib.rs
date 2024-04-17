@@ -3,7 +3,7 @@ use crypto::{generate_production_keypair, PublicKey, SecretKey};
 use log::info;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fs::{self, OpenOptions};
 use std::io::BufWriter;
 use std::io::Write as _;
@@ -79,6 +79,16 @@ pub struct Parameters {
     /// The delay after which the workers seal a batch of transactions, even if `max_batch_size`
     /// is not reached. Denominated in ms.
     pub max_batch_delay: u64,
+    // Async parameters
+    pub simulate_asynchrony: bool, //Simulating an async event
+    pub asynchrony_type: VecDeque<u8>, //Type of effects: 0 for delay full async duration, 1 for partition, 2 for  failure, 3 for egress delay. Will start #type many blips.
+    pub asynchrony_start: VecDeque<u64>,     //Start of async period   //offset from current time (in seconds) when to start next async effect
+    pub asynchrony_duration: VecDeque<u64>,  //Duration of async period
+    pub affected_nodes: VecDeque<u64>, ////first k nodes experience specified async behavior
+
+    pub egress_penalty: u64, //ms of delay
+    pub use_fast_sync: bool,
+    pub use_exponential_timeouts: bool,
 }
 
 impl Default for Parameters {
@@ -91,6 +101,16 @@ impl Default for Parameters {
             sync_retry_nodes: 3,
             batch_size: 500_000,
             max_batch_delay: 100,
+
+            simulate_asynchrony: false,
+            asynchrony_type: vec![0].into(), 
+            asynchrony_start: vec![20_000].into(), //20 second in
+            asynchrony_duration: vec![10_000].into(), //10 seconds
+            affected_nodes: vec![0].into(),
+            
+            egress_penalty: 0,
+            use_fast_sync: false,
+            use_exponential_timeouts: false,
         }
     }
 }

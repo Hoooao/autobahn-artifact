@@ -9,7 +9,7 @@ edition = "2018"
 futures = "0.3.6"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.5.0", features = ["sync", "rt", "macros"] }
-tokio-util = { version = "0.6.2", features= ["codec"] }
+tokio-util = { version = "0.6.2", features= ["codec", "time"] }
 ed25519-dalek = "1.0.1"
 thiserror = "1.0.20"
 bincode = "1.3.1"

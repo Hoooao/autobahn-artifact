@@ -153,6 +153,15 @@ impl Primary {
             /* rx_proposer */ rx_headers,
             tx_consensus,
             /* tx_proposer */ tx_parents,
+
+            parameters.simulate_asynchrony,
+            parameters.asynchrony_type,
+            parameters.asynchrony_start,
+            parameters.asynchrony_duration,
+            parameters.affected_nodes,
+            parameters.egress_penalty,
+            parameters.use_exponential_timeouts,
+            parameters.max_header_delay,
         );
 
         // Keeps track of the latest consensus round and allows other tasks to clean up their their internal state

@@ -3,23 +3,43 @@ use crate::aggregators::{CertificatesAggregator, VotesAggregator};
 use crate::error::{DagError, DagResult};
 use crate::messages::{Certificate, Header, Vote};
 use crate::primary::{PrimaryMessage, Round};
+use crate::timer::Timer;
 use crate::synchronizer::Synchronizer;
 use async_recursion::async_recursion;
 use bytes::Bytes;
 use config::Committee;
 use crypto::Hash as _;
 use crypto::{Digest, PublicKey, SignatureService};
+use futures::stream::FuturesUnordered;
+use futures::{Future, StreamExt};
 use log::{debug, error, warn};
 use network::{CancelHandler, ReliableSender};
-use std::collections::{HashMap, HashSet};
+use tokio_util::time::DelayQueue;
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use store::Store;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::time::Instant;
+
 
 #[cfg(test)]
 #[path = "tests/core_tests.rs"]
 pub mod core_tests;
+
+#[derive(Clone, PartialEq, std::fmt::Debug)]
+pub enum AsyncEffectType {
+    Off = 0,
+    TempBlip = 1, //Send nothing for x seconds, and then release all messages
+    Failure = 2, //Send nothing for x seconds  //TODO: Combine with TempBlip?
+    Partition = 3, //Send nothing to partitioned replicas for x seconds, then release all
+    Egress = 4,  //For x seconds, delay all outbound messages by some amount
+}
+fn uint_to_enum(v: u8) -> AsyncEffectType {
+    unsafe { std::mem::transmute(v) }
+}
 
 pub struct Core {
     /// The public key of this primary.
@@ -66,6 +86,30 @@ pub struct Core {
     network: ReliableSender,
     /// Keeps the cancel handlers of the messages we sent.
     cancel_handlers: HashMap<Round, Vec<CancelHandler>>,
+    // Framework for simulating asynchrony
+    simulate_asynchrony: bool, //Simulating an async event
+    asynchrony_type: VecDeque<AsyncEffectType>, //Type of effects: 0 for delay full async duration, 1 for partition, 2 for  failure, 3 for egress delay. Will start #type many blips.
+    asynchrony_start: VecDeque<u64>,     //Start of async period   //offset from current time (in seconds) when to start next async effect
+    asynchrony_duration: VecDeque<u64>,  //Duration of async period
+    affected_nodes: VecDeque<u64>, ////first k nodes experience specified async behavior.
+    during_simulated_asynchrony: bool,  //Currently in async period?
+    current_effect_type: AsyncEffectType, //Currently active effect.
+
+    async_timer_futures: FuturesUnordered<Pin<Box<dyn Future<Output = ()> + Send>>>, //Used to turn on/off period  //Note: (slot, view) are not needed, it's just to re-use existing Timer
+    already_set_timers: bool, //To avoid setting multiple timers
+    current_time: Instant,
+
+    // For partition
+    partition_public_keys: HashSet<PublicKey>,
+    partition_delayed_msgs: VecDeque<(PrimaryMessage, u64, Option<PublicKey>)>, //(msg, height, author, consensus/car path)
+    //For egress
+    egress_penalty: u64, //the number of ms of egress penalty.
+    
+    egress_delay_queue: DelayQueue<(PrimaryMessage, u64, Option<PublicKey>)>,
+    current_egress_end: Instant,
+    // Timeouts
+    use_exponential_timeouts: bool,
+    original_timeout: u64,
 }
 
 impl Core {
@@ -84,6 +128,15 @@ impl Core {
         rx_proposer: Receiver<Header>,
         tx_consensus: Sender<Certificate>,
         tx_proposer: Sender<(Vec<Certificate>, Round)>,
+        simulate_asynchrony: bool,
+        async_type: VecDeque<u8>,
+        asynchrony_start: VecDeque<u64>,
+        asynchrony_duration: VecDeque<u64>,
+        affected_nodes: VecDeque<u64>,
+        egress_penalty: u64,
+        use_exponential_timeouts: bool,
+        max_header_delay: u64,
+
     ) {
         tokio::spawn(async move {
             Self {
@@ -108,6 +161,24 @@ impl Core {
                 certificates_aggregators: HashMap::with_capacity(2 * gc_depth as usize),
                 network: ReliableSender::new(),
                 cancel_handlers: HashMap::with_capacity(2 * gc_depth as usize),
+                // simulating async
+                simulate_asynchrony,
+                asynchrony_type: async_type.iter().map(|v| uint_to_enum(*v)).collect(),
+                asynchrony_start,
+                asynchrony_duration,
+                affected_nodes,
+                async_timer_futures: FuturesUnordered::new(),
+                during_simulated_asynchrony: false,
+                current_effect_type: AsyncEffectType::Off,
+                already_set_timers: false,
+                current_time: Instant::now(),
+                partition_public_keys: HashSet::new(),
+                partition_delayed_msgs: VecDeque::new(),
+                egress_penalty,
+                egress_delay_queue: DelayQueue::new(),
+                current_egress_end: Instant::now(),
+                use_exponential_timeouts,
+                original_timeout: max_header_delay,
             }
             .run()
             .await;
@@ -115,6 +186,73 @@ impl Core {
     }
 
     async fn process_own_header(&mut self, header: Header) -> DagResult<()> {
+        // Start simulating async
+        if self.simulate_asynchrony && header.round == 2 && !self.already_set_timers {
+            debug!("added async timers");
+            self.already_set_timers = true;
+            
+            debug!("asynchrony start is {:?}", self.asynchrony_start);
+            for i in 0..self.asynchrony_start.len() {
+                if self.asynchrony_type[i] == AsyncEffectType::Egress {
+                    let mut keys: Vec<_> = self.committee.authorities.keys().cloned().collect();
+                    keys.sort();
+                    let index = keys.binary_search(&self.name).unwrap();
+                    // Skip nodes that are not affected by the asynchrony
+                    if index >= self.affected_nodes[i] as usize {
+                        continue;
+                    } else {
+                        debug!("egress affects this node");
+                    }
+                }
+
+                if self.asynchrony_type[i] == AsyncEffectType::Failure {
+                    let mut keys: Vec<_> = self.committee.authorities.keys().cloned().collect();
+                    keys.sort();
+                    let index = keys.binary_search(&self.name).unwrap();
+                    // Skip nodes that are not affected by the asynchrony
+                    if index >= self.affected_nodes[i] as usize {
+                        continue;
+                    }
+                }
+                        
+                let start_offset = self.asynchrony_start[i];
+                let end_offset = start_offset +  self.asynchrony_duration[i];
+                        
+                let async_start = Timer::new(start_offset);
+                let async_end = Timer::new(end_offset);
+
+                self.async_timer_futures.push(Box::pin(async_start));
+                self.async_timer_futures.push(Box::pin(async_end));
+
+                if self.asynchrony_type[i] == AsyncEffectType::Partition {
+                    let mut keys: Vec<_> = self.committee.authorities.keys().cloned().collect();
+                    keys.sort();
+                    let index = keys.binary_search(&self.name).unwrap();
+
+                    // Figure out which partition we are in, partition_nodes indicates when the left partition ends
+                    let mut start: usize = 0;
+                    let mut end: usize = 0;
+                        
+                    // We are in the right partition
+                    if index > self.affected_nodes[i] as usize - 1 {
+                        start = self.affected_nodes[i] as usize;
+                        end = keys.len();
+                            
+                    } else {
+                        // We are in the left partition
+                        start = 0;
+                        end = self.affected_nodes[i] as usize;
+                    }
+
+                    // These are the nodes in our side of the partition
+                    for j in start..end {
+                        self.partition_public_keys.insert(keys[j]);
+                    }
+
+                    debug!("partition pks are {:?}", self.partition_public_keys);
+                }
+            }
+        }
         // Reset the votes aggregator.
         self.current_header = header.clone();
         self.votes_aggregator = VotesAggregator::new();
@@ -345,6 +483,149 @@ impl Core {
         certificate.verify(&self.committee).map_err(DagError::from)
     }
 
+    pub async fn send_msg(&mut self, message: PrimaryMessage, height: u64, author: Option<PublicKey>) {
+        
+        //go through enums
+        match self.current_effect_type {
+            AsyncEffectType::Off => {
+                debug!("message sent normally");
+                self.send_msg_normal(message, height, author).await;
+            }
+            AsyncEffectType::TempBlip => { //Our old handling
+                //add message
+                /*match message {
+                     PrimaryMessage::ConsensusMessage(m) => {
+                         match m.clone() {
+                            ConsensusMessage::Prepare {slot, view, tc, qc_ticket: _, proposals} => {
+                                debug!("Simulating Asynchrony: skip sending Prepare for slot {} view {}. This will trigger a view change", slot, view);
+                                self.async_delayed_prepare = Some(m);
+                            }
+                            _ => {}
+                            }
+                     }
+                
+                    _ => { debug!("send all other messages")}
+                }*/
+                //panic!("TempBlip currently deprecated");
+                /*if self.round >= 400 && self.round <= 401 && self.name == self.leader_elector.get_leader(self.round) {
+                    debug!("dropping message");
+                    return;
+                } else {
+                    debug!("message sent normally");
+                    self.send_msg_normal(message, author).await;
+                }*/
+            }
+            AsyncEffectType::Failure => {
+                //drop message
+                debug!("dropping message");
+            }
+            AsyncEffectType::Partition => {
+                match author {
+                    Some(author) => {
+                        if self.partition_public_keys.contains(&author) {
+                            // The receiver is in our partition, so we can send the message directly
+                            debug!("single message during partition, sent normally");
+                            self.send_msg_normal(message, height, Some(author)).await;
+                        } else {
+                            // The receiver is not in our partition, so we buffer for later
+                            debug!("single message during partition, buffered");
+                            self.partition_delayed_msgs.push_back((message, height, Some(author)));
+                        }
+                    }
+                    None => {
+                        // Send the message to all nodes in our side of the partition
+                        if self.partition_public_keys.len() > 1 {
+                            self.send_msg_partition(&message, height, true).await;
+                            debug!("broadcast message during partition, sent to nodes in our partition");
+                        }
+                        
+                        // Buffer the message for the other side of the partition
+                        self.partition_delayed_msgs.push_back((message, height, None));
+                    }
+                }
+            }
+            AsyncEffectType::Egress => {
+                //self.egress_delayed_msgs.push_back((message, author));
+                /*let curr = Instant::now().elapsed().as_millis();
+                let wake_time = curr + self.egress_penalty as u128;
+                self.egress_delayed_msgs.push_back((wake_time, message, author));
+
+                if self.egress_timer_futures.is_empty() {
+                    //start timer
+                    let next_wake = Timer::new(self.egress_penalty);
+                    self.egress_timer_futures.push(Box::pin(next_wake));
+                }*/
+                let egress_end_time = Instant::now() + Duration::from_millis(self.egress_penalty);
+                debug!("current time is {:?}", Instant::now());
+                debug!("egress penalty is {:?}", self.egress_penalty);
+                debug!("msg egress end time is {:?}", egress_end_time);
+                let actual_send_time = egress_end_time.min(self.current_egress_end);
+                debug!("msg actual send time is {:?}", actual_send_time);
+                self.egress_delay_queue.insert_at((message, height, author), actual_send_time);
+            }
+
+            _ => {
+                panic!("not a valid effect")
+            }
+        }
+    }
+
+    pub async fn send_msg_partition(&mut self, message: &PrimaryMessage, height: u64, our_partition: bool) {
+        let addresses = self
+            .committee
+            .others_primaries(&self.name)
+            .iter()
+            .filter(|(pk, _)| (our_partition && self.partition_public_keys.contains(pk)) || (!our_partition && !self.partition_public_keys.contains(pk)))
+            .map(|(_, x)| x.primary_to_primary)
+            .collect();
+        debug!("addresses for partition are are {:?}, our partition is {}", addresses, our_partition);        
+
+        let bytes = bincode::serialize(message).expect("Failed to serialize message");
+        let handlers = self.network.broadcast(addresses, Bytes::from(bytes)).await;
+       
+        self.cancel_handlers
+            .entry(height)
+            .or_insert_with(Vec::new)
+            .extend(handlers);
+        
+    }
+
+    pub async fn send_msg_normal(&mut self, message: PrimaryMessage, height: u64, author: Option<PublicKey>) {
+        match author {
+            Some(author) => {
+                let address = self
+                    .committee
+                    .primary(&author)
+                    .expect("Author of valid header is not in the committee")
+                    .primary_to_primary;
+                let bytes = bincode::serialize(&message).expect("Failed to serialize message");
+                let handler = self.network.send(address, Bytes::from(bytes)).await;
+                
+                self.cancel_handlers
+                    .entry(height)
+                    .or_insert_with(Vec::new)
+                    .push(handler);
+            }
+            None => {
+                let addresses = self
+                    .committee
+                    .others_primaries(&self.name)
+                    .iter()
+                    .map(|(_, x)| x.primary_to_primary)
+                    .collect();
+
+                let bytes = bincode::serialize(&message).expect("Failed to serialize message");
+                let handlers = self.network.broadcast(addresses, Bytes::from(bytes)).await;
+
+                self.cancel_handlers
+                    .entry(height)
+                    .or_insert_with(Vec::new)
+                    .extend(handlers);
+            }
+        }
+        
+    }
+
     // Main loop listening to incoming messages.
     pub async fn run(&mut self) {
         loop {
@@ -373,6 +654,98 @@ impl Core {
                         },
                         _ => panic!("Unexpected core message")
                     }
+                },
+
+                Some(()) = self.async_timer_futures.next() => {
+                    self.during_simulated_asynchrony = !self.during_simulated_asynchrony; 
+
+                    debug!("Time elapsed is {:?}", self.current_time.elapsed()); 
+                    self.current_time = Instant::now();
+
+                    if self.during_simulated_asynchrony {
+                        debug!("asynchrony type is {:?}", self.asynchrony_type);
+                        self.current_effect_type = self.asynchrony_type.pop_front().unwrap();
+
+                        if self.current_effect_type == AsyncEffectType::Egress {
+                            // Start the first egress timer
+                            //self.egress_timer.reset();
+                            let async_duration = self.asynchrony_duration.pop_front().unwrap();
+                            self.current_egress_end = Instant::now() + Duration::from_millis(async_duration);
+                            debug!("End of egress is {:?}", self.current_egress_end);
+                        }
+                    }
+
+                    if !self.during_simulated_asynchrony {
+
+                        if self.current_effect_type == AsyncEffectType::TempBlip {
+                              //Send all blocked messages
+                            /*if self.async_delayed_prepare.is_some() {
+                                let last_prop = self.async_delayed_prepare.clone().unwrap();
+                                let still_relevant = match &last_prop { //check whether we're still in a relevant view.
+                                    ConsensusMessage::Prepare {slot, view, tc: _, qc_ticket: _, proposals: _} => view == self.views.get(slot).unwrap_or(&0),
+                                    _ => false,
+                                };
+                                if still_relevant { //try sending it now.
+                                    let _ = self.send_consensus_req(last_prop).await;
+                                }
+                                self.async_delayed_prepare = None;
+                            }*/
+                        }
+                        //Failure
+                        if self.current_effect_type == AsyncEffectType::Failure {
+                            /*if self.async_delayed_prepare.is_some() {
+                                let _ = self.send_consensus_req(self.async_delayed_prepare.clone().unwrap()).await;
+                            }
+                            self.async_delayed_prepare = None;*/
+                            //do nothing
+                        }
+                        //Partition
+                        if self.current_effect_type == AsyncEffectType::Partition {
+                            while !self.partition_delayed_msgs.is_empty() {
+                                debug!("sending messages to other side of partition");
+                                let (msg, height, author) = self.partition_delayed_msgs.pop_front().unwrap();
+                                match author {
+                                    Some(author) => self.send_msg_normal(msg, height, Some(author)).await,
+                                    None => self.send_msg_partition(&msg, height, false).await,
+                                }
+                            }
+                        }
+                        //Egress delay
+                        if self.current_effect_type == AsyncEffectType::Egress {
+                            //Send all.
+                            /*while !self.egress_delayed_msgs.is_empty() {
+                                let (msg, height, author, consensus_handler) = self.egress_delayed_msgs.pop_front().unwrap();
+                                debug!("sending delayed egress message");
+                                self.send_msg_normal(msg, height, author, consensus_handler).await;
+                            }*/
+                        }
+
+                        // Turn off the async effect type
+                        self.current_effect_type = AsyncEffectType::Off;
+                      
+                        //Start another async event if available
+                        /*if !self.asynchrony_start.is_empty() {
+                            self.current_effect_type = self.asynchrony_type.pop_front().unwrap();
+                            let start_offset = self.asynchrony_start.pop_front().unwrap();
+                            let end_offset = start_offset +  self.asynchrony_duration.pop_front().unwrap();
+                            
+                            let async_start = Timer::new(0, 0, start_offset);
+                            let async_end = Timer::new(0, 0, end_offset);
+    
+                            self.async_timer_futures.push(Box::pin(async_start));
+                            self.async_timer_futures.push(Box::pin(async_end));
+                        }*/
+                    
+                        
+                    }
+                    Ok(())
+                },
+
+                Some(Ok(item)) = self.egress_delay_queue.next() => {
+                    debug!("egress msg expired, sending normally");
+                    let (message, height, author) = item.into_inner();
+                    self.send_msg_normal(message, height, author).await;
+                    Ok(())
                 },
 
                 // We receive here loopback headers from the `HeaderWaiter`. Those are headers for which we interrupted
