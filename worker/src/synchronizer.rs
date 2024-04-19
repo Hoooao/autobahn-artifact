@@ -114,6 +114,8 @@ impl Synchronizer {
                             .expect("Failed to measure time")
                             .as_millis();
 
+                        debug!("Received sync request for {:?} batches", digests);
+
                         let mut missing = Vec::new();
                         for digest in digests {
                             // Ensure we do not send twice the same sync request.

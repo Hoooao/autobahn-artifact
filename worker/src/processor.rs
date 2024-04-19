@@ -4,6 +4,7 @@ use config::WorkerId;
 use crypto::Digest;
 use ed25519_dalek::Digest as _;
 use ed25519_dalek::Sha512;
+use log::debug;
 use primary::WorkerPrimaryMessage;
 use std::convert::TryInto;
 use store::Store;
@@ -36,6 +37,7 @@ impl Processor {
             while let Some(batch) = rx_batch.recv().await {
                 // Hash the batch.
                 let digest = Digest(Sha512::digest(&batch).as_slice()[..32].try_into().unwrap());
+                debug!("received batch {:?}", digest);
 
                 // Store the batch.
                 store.write(digest.to_vec(), batch).await;
