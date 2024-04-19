@@ -118,6 +118,8 @@ impl Proposer {
         )
         .await;
         debug!("Created {:?}", header);
+        debug!("digests size after is {:?}", self.digests.len());
+        debug!("header payload size is {:?}", header.payload.len());
 
         #[cfg(feature = "benchmark")]
         for digest in header.payload.keys() {
