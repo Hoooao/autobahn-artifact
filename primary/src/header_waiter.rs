@@ -154,7 +154,7 @@ impl HeaderWaiter {
                             waiting.push(fut);
 
                             // Ensure we didn't already send a sync request for these parents.
-                            /*let mut requires_sync = HashMap::new();
+                            let mut requires_sync = HashMap::new();
                             for (digest, worker_id) in missing.into_iter() {
                                 self.batch_requests.entry(digest.clone()).or_insert_with(|| {
                                     requires_sync.entry(worker_id).or_insert_with(Vec::new).push(digest);
@@ -170,7 +170,7 @@ impl HeaderWaiter {
                                 let bytes = bincode::serialize(&message)
                                     .expect("Failed to serialize batch sync request");
                                 self.network.send(address, Bytes::from(bytes)).await;
-                            }*/
+                            }
                         }
 
                         WaiterMessage::SyncParents(missing, header) => {
