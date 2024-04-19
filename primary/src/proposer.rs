@@ -109,11 +109,16 @@ impl Proposer {
 
         debug!("digests size after is {:?}", self.digests.len());*/
 
+        let mut num_digests = self.digests.len();
+        if num_digests > self.cap_size {
+            num_digests = self.cap_size;
+        }
+
         let header = Header::new(
             self.name,
             self.round,
-            self.digests.drain(..).collect(),
-            self.last_parents.drain(..self.cap_size).map(|x| x.digest()).collect(),
+            self.digests.drain(..num_digests).collect(),
+            self.last_parents.drain(..).map(|x| x.digest()).collect(),
             &mut self.signature_service,
         )
         .await;
