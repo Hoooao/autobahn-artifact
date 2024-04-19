@@ -46,6 +46,8 @@ pub struct Proposer {
     digests: Vec<(Digest, WorkerId)>,
     /// Keeps track of the size (in bytes) of batches' digests that we received so far.
     payload_size: usize,
+    /// Cap size
+    cap_size: usize,
 }
 
 impl Proposer {
@@ -76,6 +78,7 @@ impl Proposer {
                 last_leader: None,
                 digests: Vec::with_capacity(2 * header_size),
                 payload_size: 0,
+                cap_size: 15,
             }
             .run()
             .await;
@@ -110,7 +113,7 @@ impl Proposer {
             self.name,
             self.round,
             self.digests.drain(..).collect(),
-            self.last_parents.drain(..).map(|x| x.digest()).collect(),
+            self.last_parents.drain(..self.cap_size).map(|x| x.digest()).collect(),
             &mut self.signature_service,
         )
         .await;
@@ -207,7 +210,8 @@ impl Proposer {
 
                 // Make a new header.
                 self.make_header().await;
-                self.payload_size = 0;
+                //self.payload_size = 0;
+                self.payload_size = self.digests.len();
 
                 // Reschedule the timer.
                 let deadline = Instant::now() + Duration::from_millis(self.max_header_delay);
