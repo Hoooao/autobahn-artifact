@@ -227,6 +227,7 @@ impl Proposer {
 
             tokio::select! {
                 Some((parents, round)) = self.rx_core.recv() => {
+                    debug!("Received parents for round {}", round);
                     // Compare the parents' round number with our current round.
                     match round.cmp(&self.round) {
                         Ordering::Greater => {
