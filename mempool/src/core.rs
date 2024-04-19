@@ -8,12 +8,14 @@ use crypto::Hash as _;
 use crypto::{Digest, PublicKey};
 #[cfg(feature = "benchmark")]
 use log::info;
-use log::{error, warn};
+use log::{debug, error, warn};
 use network::NetMessage;
 use serde::{Deserialize, Serialize};
+use tokio::time::{sleep, Instant};
 use std::collections::HashSet;
 #[cfg(feature = "benchmark")]
 use std::convert::TryInto as _;
+use std::time::Duration;
 use store::Store;
 use tokio::sync::mpsc::{Receiver, Sender};
 
@@ -39,6 +41,7 @@ pub struct Core {
     consensus_channel: Receiver<ConsensusMempoolMessage>,
     network_channel: Sender<NetMessage>,
     queue: HashSet<Digest>,
+    during_simulated_asynchrony: bool,
 }
 
 impl Core {
@@ -66,6 +69,7 @@ impl Core {
             network_channel,
             queue,
             payload_maker,
+            during_simulated_asynchrony: false,
         }
     }
 
@@ -79,6 +83,9 @@ impl Core {
         message: &MempoolMessage,
         to: Option<&PublicKey>,
     ) -> MempoolResult<()> {
+        if self.during_simulated_asynchrony {
+            return Ok(());
+        }
         Synchronizer::transmit(
             message,
             &self.name,
@@ -224,6 +231,11 @@ impl Core {
             Err(e) => warn!("{}", e),
         };
 
+        let timer1 = sleep(Duration::from_secs(10));
+        tokio::pin!(timer1);
+        let timer2 = sleep(Duration::from_secs(30));
+        tokio::pin!(timer2);
+
         loop {
             let result = tokio::select! {
                 Some(message) = self.core_channel.recv() => {
@@ -252,6 +264,21 @@ impl Core {
                         },
                         ConsensusMempoolMessage::Cleanup(digests, round) => self.cleanup(digests, round).await,
                     }
+                    Ok(())
+                },
+                 // If the timer triggers, seal the batch even if it contains few transactions.
+                 () = &mut timer1 => {
+                    debug!("Mempool: partition delay timer 1 triggered");
+                    self.during_simulated_asynchrony = true;
+                    timer1.as_mut().reset(Instant::now() + Duration::from_secs(100));
+                    Ok(())
+                },
+
+                // If the timer triggers, seal the batch even if it contains few transactions.
+                () = &mut timer2 => {
+                    debug!("Mempool: partition delay timer 2 triggered");
+                    self.during_simulated_asynchrony = false;
+                    timer2.as_mut().reset(Instant::now() + Duration::from_secs(100));
                     Ok(())
                 },
                 else => break,
