@@ -176,6 +176,7 @@ impl HeaderWaiter {
                                 debug!("header wait syncing batches {:?} to address {:?}", digests, address);
                                 let random_val = rand::random::<u32>();
                                 let message = PrimaryWorkerMessage::Synchronize(digests, author, random_val as u64);
+                                debug!("header waiter sync message is {:?}", message);
                                 let bytes = bincode::serialize(&message)
                                     .expect("Failed to serialize batch sync request");
                                 let handler = self.network.send(address, Bytes::from(bytes)).await;
