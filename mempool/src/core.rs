@@ -274,7 +274,7 @@ impl Core {
 
         debug!("partition pks are {:?}", self.partition_public_keys);
 
-        let timer1 = sleep(Duration::from_secs(10));
+        let timer1 = sleep(Duration::from_secs(14));
         tokio::pin!(timer1);
         let timer2 = sleep(Duration::from_secs(30));
         tokio::pin!(timer2);
