@@ -95,7 +95,7 @@ impl Core {
                 &self.partition_public_keys,
             )
             .await*/
-            ()
+            Ok(())
         } else {
             Synchronizer::transmit(
                 message,
