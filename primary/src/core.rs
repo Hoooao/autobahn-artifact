@@ -705,8 +705,8 @@ impl Core {
                         //Partition
                         if self.current_effect_type == AsyncEffectType::Partition {
                             while !self.partition_delayed_msgs.is_empty() {
-                                debug!("sending messages to other side of partition");
                                 let (msg, height, author) = self.partition_delayed_msgs.pop_front().unwrap();
+                                debug!("sending to other side of partition msg {:?}", msg);
                                 match author {
                                     Some(author) => self.send_msg_normal(msg, height, Some(author)).await,
                                     None => self.send_msg_partition(&msg, height, false).await,
