@@ -479,6 +479,7 @@ impl Core {
     #[async_recursion]
     async fn process_block(&mut self, block: &Block) -> ConsensusResult<()> {
         debug!("Processing {:?}", block);
+        debug!("Processing digests for block {:?}", block.payload.iter().map(|x| x.to_string()).collect::<Vec<String>>());
 
         // Let's see if we have the last three ancestors of the block, that is:
         //      b0 <- |qc0; b1| <- |qc1; block|
