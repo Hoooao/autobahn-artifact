@@ -17,6 +17,11 @@ use std::convert::TryInto as _;
 use std::net::SocketAddr;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
+//use timer::Timer;
+use futures::stream::futures_unordered::FuturesUnordered;
+use futures::{Future, StreamExt};
+use std::pin::Pin;
+use crate::timer::Timer;
 
 #[cfg(test)]
 #[path = "tests/batch_maker_tests.rs"]
@@ -49,6 +54,8 @@ pub struct BatchMaker {
     during_simulated_asynchrony: bool,
     // Partition public keys
     partition_public_keys: HashSet<PublicKey>,
+    // timer futures
+    partition_timer_futures: FuturesUnordered<Pin<Box<dyn Future<Output = ()> + Send>>>,
 }
 
 impl BatchMaker {
@@ -74,6 +81,7 @@ impl BatchMaker {
                 network: SimpleSender::new(),
                 during_simulated_asynchrony: false,
                 partition_public_keys,
+                partition_timer_futures: FuturesUnordered::new(),
             }
             .run()
             .await;
@@ -84,10 +92,14 @@ impl BatchMaker {
     async fn run(&mut self) {
         let timer = sleep(Duration::from_millis(self.max_batch_delay));
         tokio::pin!(timer);
-        let timer1 = sleep(Duration::from_secs(10));
+        /*let timer1 = sleep(Duration::from_secs(10));
         tokio::pin!(timer1);
         let timer2 = sleep(Duration::from_secs(30));
-        tokio::pin!(timer2);
+        tokio::pin!(timer2);*/
+        let timer1 = Timer::new(10_000);
+        let timer2 = Timer::new(30_000);
+        self.partition_timer_futures.push(Box::pin(timer1));
+        self.partition_timer_futures.push(Box::pin(timer2));
 
         loop {
             tokio::select! {
@@ -101,6 +113,12 @@ impl BatchMaker {
                     }
                 },
 
+                Some(()) = self.partition_timer_futures.next() => {
+                    debug!("BatchMaker: partition delay timer triggered");
+                    self.during_simulated_asynchrony = !self.during_simulated_asynchrony;
+                    //timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
+                },
+
                 // If the timer triggers, seal the batch even if it contains few transactions.
                 () = &mut timer => {
                     if !self.current_batch.is_empty() {
@@ -110,7 +128,7 @@ impl BatchMaker {
                 }
 
                 // If the timer triggers, seal the batch even if it contains few transactions.
-                () = &mut timer1 => {
+                /*() = &mut timer1 => {
                     debug!("BatchMaker: partition delay timer 1 triggered");
                     self.during_simulated_asynchrony = true;
                     timer1.as_mut().reset(Instant::now() + Duration::from_secs(100));
@@ -122,7 +140,8 @@ impl BatchMaker {
                     //debug!("partition queue size is {:?}", self.partition_queue.len());
                     self.during_simulated_asynchrony = false;
                     timer2.as_mut().reset(Instant::now() + Duration::from_secs(100));
-                },
+                },*/
+                
             }
 
             // Give the change to schedule other tasks.

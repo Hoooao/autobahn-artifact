@@ -41,7 +41,7 @@ pub enum PrimaryMessage {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum PrimaryWorkerMessage {
     /// The primary indicates that the worker need to sync the target missing batches.
-    Synchronize(Vec<Digest>, /* target */ PublicKey),
+    Synchronize(Vec<Digest>, /* target */ PublicKey, u64),
     /// The primary indicates a round update.
     Cleanup(Round),
 }

@@ -17,6 +17,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::time::{sleep, Duration, Instant};
+use rand::{self, random, Rng}; // 0.8.0
 
 /// The resolution of the timer that checks whether we received replies to our sync requests, and triggers
 /// new sync requests if we didn't.
@@ -173,7 +174,8 @@ impl HeaderWaiter {
                                     .expect("Author of valid header is not in the committee")
                                     .primary_to_worker;
                                 debug!("header wait syncing batches {:?} to address {:?}", digests, address);
-                                let message = PrimaryWorkerMessage::Synchronize(digests, author);
+                                let random_val = rand::random::<u32>();
+                                let message = PrimaryWorkerMessage::Synchronize(digests, author, random_val as u64);
                                 let bytes = bincode::serialize(&message)
                                     .expect("Failed to serialize batch sync request");
                                 let handler = self.network.send(address, Bytes::from(bytes)).await;

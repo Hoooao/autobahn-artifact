@@ -108,7 +108,7 @@ impl Synchronizer {
             tokio::select! {
                 // Handle primary's messages.
                 Some(message) = self.rx_message.recv() => match message {
-                    PrimaryWorkerMessage::Synchronize(digests, target) => {
+                    PrimaryWorkerMessage::Synchronize(digests, target, _) => {
                         let now = SystemTime::now()
                             .duration_since(UNIX_EPOCH)
                             .expect("Failed to measure time")
