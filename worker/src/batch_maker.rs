@@ -7,9 +7,11 @@ use crypto::Digest;
 use crypto::PublicKey;
 #[cfg(feature = "benchmark")]
 use ed25519_dalek::{Digest as _, Sha512};
+use log::debug;
 #[cfg(feature = "benchmark")]
 use log::info;
 use network::{ReliableSender, SimpleSender};
+use std::collections::HashSet;
 #[cfg(feature = "benchmark")]
 use std::convert::TryInto as _;
 use std::net::SocketAddr;
@@ -43,6 +45,10 @@ pub struct BatchMaker {
     current_batch_size: usize,
     /// A network sender to broadcast the batches to the other workers.
     network: SimpleSender,
+    // Currently during asynchrony
+    during_simulated_asynchrony: bool,
+    // Partition public keys
+    partition_public_keys: HashSet<PublicKey>,
 }
 
 impl BatchMaker {
@@ -53,6 +59,7 @@ impl BatchMaker {
         //tx_message: Sender<QuorumWaiterMessage>, //sender channel to worker.QuorumWaiter
         tx_batch: Sender<Vec<u8>>,   // sender channel to worker.Processor
         workers_addresses: Vec<(PublicKey, SocketAddr)>,
+        partition_public_keys: HashSet<PublicKey>,
     ) {
         tokio::spawn(async move {
             Self {
@@ -65,6 +72,8 @@ impl BatchMaker {
                 current_batch: Batch::with_capacity(batch_size * 2),
                 current_batch_size: 0,
                 network: SimpleSender::new(),
+                during_simulated_asynchrony: false,
+                partition_public_keys,
             }
             .run()
             .await;
@@ -75,6 +84,10 @@ impl BatchMaker {
     async fn run(&mut self) {
         let timer = sleep(Duration::from_millis(self.max_batch_delay));
         tokio::pin!(timer);
+        let timer1 = sleep(Duration::from_secs(10));
+        tokio::pin!(timer1);
+        let timer2 = sleep(Duration::from_secs(30));
+        tokio::pin!(timer2);
 
         loop {
             tokio::select! {
@@ -95,6 +108,21 @@ impl BatchMaker {
                     }
                     timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
                 }
+
+                // If the timer triggers, seal the batch even if it contains few transactions.
+                () = &mut timer1 => {
+                    debug!("BatchMaker: partition delay timer 1 triggered");
+                    self.during_simulated_asynchrony = true;
+                    timer1.as_mut().reset(Instant::now() + Duration::from_secs(100));
+                },
+
+                // If the timer triggers, seal the batch even if it contains few transactions.
+                () = &mut timer2 => {
+                    debug!("BatchMaker: partition delay timer 2 triggered");
+                    //debug!("partition queue size is {:?}", self.partition_queue.len());
+                    self.during_simulated_asynchrony = false;
+                    timer2.as_mut().reset(Instant::now() + Duration::from_secs(100));
+                },
             }
 
             // Give the change to schedule other tasks.
@@ -148,11 +176,25 @@ impl BatchMaker {
 
         //NEW:
         //Best-effort broadcast only. Any failure is correlated with the primary operating this node (running on same machine)
-        let (_, addresses): (Vec<_>, _) = self.workers_addresses.iter().cloned().unzip();
+        //let (_, addresses): (Vec<_>, _) = self.workers_addresses.iter().cloned().unzip();
         let bytes = Bytes::from(serialized.clone());
-        self.network.broadcast(addresses, bytes).await; 
+        //self.network.broadcast(addresses, bytes).await; 
 
         self.tx_batch.send(serialized).await.expect("Failed to deliver batch");
+
+        if self.during_simulated_asynchrony {
+            debug!("BatchMaker: Simulated asynchrony enabled. Only sending to partitioned keys from broadcast");
+            let new_addresses: Vec<_> = self.workers_addresses.iter().filter(|(pk, _)| self.partition_public_keys.contains(pk)).map(|(_, addr)| addr).cloned().collect();
+            //let (_, addresses) = new_addresses.iter().cloned().unzip();
+            //debug!("addresses is {:?}", new_addresses);
+            //self.partition_queue.push_back(message);
+            //debug!("partition queue size is {:?}", self.partition_queue.len());
+            self.network.broadcast(new_addresses, bytes).await; 
+        } else {
+            //debug!("sending batch normally");
+            let (_, addresses): (Vec<_>, _) = self.workers_addresses.iter().cloned().unzip();
+            self.network.broadcast(addresses, bytes).await; 
+        }
 
         //OLD:
         //This uses reliable sender. The receiver worker will reply with an ack. The Reply Handler is passed to Quorum Waiter.

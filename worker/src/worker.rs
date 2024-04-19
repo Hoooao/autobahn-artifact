@@ -10,10 +10,11 @@ use bytes::Bytes;
 use config::{Committee, Parameters, WorkerId};
 use crypto::{Digest, PublicKey};
 use futures::sink::SinkExt as _;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use network::{MessageHandler, Receiver, Writer};
 use primary::PrimaryWorkerMessage;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::error::Error;
 use store::Store;
 use tokio::sync::mpsc::{channel, Sender};
@@ -152,6 +153,33 @@ impl Worker {
             /* handler */ TxReceiverHandler { tx_batch_maker },
         );
 
+        let mut keys: Vec<_> = self.committee.authorities.keys().cloned().collect();
+        let mut partition_public_keys = HashSet::new();
+        keys.sort();
+        let index = keys.binary_search(&self.name).unwrap();
+
+        // Figure out which partition we are in, partition_nodes indicates when the left partition ends
+        let mut start: usize = 0;
+        let mut end: usize = 0;
+                        
+        // We are in the right partition
+        if index > 2 as usize - 1 {
+            start = 2 as usize;
+            end = keys.len();
+                            
+        } else {
+            // We are in the left partition
+            start = 0;
+            end = 2 as usize;
+        }
+
+        // These are the nodes in our side of the partition
+        for j in start..end {
+            partition_public_keys.insert(keys[j]);
+        }
+
+        debug!("partition pks are {:?}", partition_public_keys);
+
         // The transactions are sent to the `BatchMaker` that assembles them into batches. It then broadcasts
         // (in a reliable manner) the batches to all other workers that share the same `id` as us. Finally, it
         // gathers the 'cancel handlers' of the messages and send them to the `QuorumWaiter`.
@@ -167,6 +195,7 @@ impl Worker {
                 .iter()
                 .map(|(name, addresses)| (*name, addresses.worker_to_worker))
                 .collect(),
+            partition_public_keys,
         );
 
         // // The `QuorumWaiter` waits for 2f authorities to acknowledge reception of the batch. It then forwards
