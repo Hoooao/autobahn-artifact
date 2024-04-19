@@ -3,6 +3,7 @@ use crypto::PublicKey;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::collections::HashSet;
 
 #[derive(Serialize, Deserialize)]
 pub struct Parameters {
@@ -78,6 +79,15 @@ impl Committee {
         self.authorities
             .values()
             .filter(|x| x.name != *myself)
+            .map(|x| x.mempool_address)
+            .collect()
+    }
+
+    pub fn partition_broadcast_addresses(&self, myself: &PublicKey, our_partition: bool, partition_public_keys: &HashSet<PublicKey>) -> Vec<SocketAddr> {
+        self.authorities
+            .values()
+            .filter(|x| x.name != *myself)
+            .filter(|x| (our_partition && partition_public_keys.contains(&x.name)) || (!our_partition && !partition_public_keys.contains(&x.name)))
             .map(|x| x.mempool_address)
             .collect()
     }

@@ -194,6 +194,23 @@ impl Synchronizer {
         Ok(())
     }
 
+    pub async fn transmit_partition(
+        message: &MempoolMessage,
+        from: &PublicKey,
+        network_channel: &Sender<NetMessage>,
+        committee: &Committee,
+        our_partition: bool,
+        partition_public_keys: &HashSet<PublicKey>,
+    ) -> MempoolResult<()> {
+        let addresses = committee.partition_broadcast_addresses(from, our_partition, partition_public_keys);
+        let bytes = bincode::serialize(message).expect("Failed to serialize core message");
+        let message = NetMessage(Bytes::from(bytes), addresses);
+        if let Err(e) = network_channel.send(message).await {
+            panic!("Failed to send block through network channel: {}", e);
+        }
+        Ok(())
+    }
+
     pub async fn verify_payload(&mut self, block: Block) -> MempoolResult<bool> {
         let mut missing = HashSet::new();
         for digest in &block.payload {

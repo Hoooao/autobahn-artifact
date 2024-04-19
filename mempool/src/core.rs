@@ -42,6 +42,7 @@ pub struct Core {
     network_channel: Sender<NetMessage>,
     queue: HashSet<Digest>,
     during_simulated_asynchrony: bool,
+    partition_public_keys: HashSet<PublicKey>,
 }
 
 impl Core {
@@ -70,6 +71,7 @@ impl Core {
             queue,
             payload_maker,
             during_simulated_asynchrony: false,
+            partition_public_keys: HashSet::new(),
         }
     }
 
@@ -84,16 +86,26 @@ impl Core {
         to: Option<&PublicKey>,
     ) -> MempoolResult<()> {
         if self.during_simulated_asynchrony {
-            return Ok(());
+            Synchronizer::transmit_partition(
+                message,
+                &self.name,
+                &self.network_channel,
+                &self.committee,
+                true,
+                &self.partition_public_keys,
+            )
+            .await
+        } else {
+            Synchronizer::transmit(
+                message,
+                &self.name,
+                to,
+                &self.committee,
+                &self.network_channel,
+            )
+            .await
         }
-        Synchronizer::transmit(
-            message,
-            &self.name,
-            to,
-            &self.committee,
-            &self.network_channel,
-        )
-        .await
+        
     }
 
     async fn process_own_payload(
@@ -230,6 +242,32 @@ impl Core {
             Err(MempoolError::SerializationError(e)) => error!("Store corrupted. {}", e),
             Err(e) => warn!("{}", e),
         };
+
+        let mut keys: Vec<_> = self.committee.authorities.keys().cloned().collect();
+        keys.sort();
+        let index = keys.binary_search(&self.name).unwrap();
+
+        // Figure out which partition we are in, partition_nodes indicates when the left partition ends
+        let mut start: usize = 0;
+        let mut end: usize = 0;
+                        
+        // We are in the right partition
+        if index > 2 as usize - 1 {
+            start = 2 as usize;
+            end = keys.len();
+                            
+        } else {
+            // We are in the left partition
+            start = 0;
+            end = 2 as usize;
+        }
+
+        // These are the nodes in our side of the partition
+        for j in start..end {
+            self.partition_public_keys.insert(keys[j]);
+        }
+
+        debug!("partition pks are {:?}", self.partition_public_keys);
 
         let timer1 = sleep(Duration::from_secs(10));
         tokio::pin!(timer1);
