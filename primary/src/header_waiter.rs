@@ -130,6 +130,7 @@ impl HeaderWaiter {
                     match message {
                         WaiterMessage::SyncBatches(missing, header) => {
                             debug!("Synching the payload of {}", header);
+                            debug!("synching payloads {:?}", missing);
                             let header_id = header.id.clone();
                             let round = header.round;
                             let author = header.author;
@@ -166,6 +167,7 @@ impl HeaderWaiter {
                                     .worker(&author, &worker_id)
                                     .expect("Author of valid header is not in the committee")
                                     .primary_to_worker;
+                                debug!("header wait syncing batches {:?} to address {:?}", digests, address);
                                 let message = PrimaryWorkerMessage::Synchronize(digests, author);
                                 let bytes = bincode::serialize(&message)
                                     .expect("Failed to serialize batch sync request");
