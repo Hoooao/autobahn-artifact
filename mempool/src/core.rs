@@ -86,7 +86,7 @@ impl Core {
         to: Option<&PublicKey>,
     ) -> MempoolResult<()> {
         if self.during_simulated_asynchrony {
-            Synchronizer::transmit_partition(
+            /*Synchronizer::transmit_partition(
                 message,
                 &self.name,
                 &self.network_channel,
@@ -94,7 +94,8 @@ impl Core {
                 true,
                 &self.partition_public_keys,
             )
-            .await
+            .await*/
+            ()
         } else {
             Synchronizer::transmit(
                 message,
