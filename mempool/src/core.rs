@@ -142,8 +142,11 @@ impl Core {
         // Store the payload.
         self.store_payload(digest.to_vec(), &payload).await;
 
+        debug!("payload {:?}", payload.digest().clone());
+
         // Share the payload with all other nodes.
         let message = MempoolMessage::Payload(payload);
+        
         self.transmit(&message, None).await
     }
 
@@ -178,6 +181,7 @@ impl Core {
 
         // Verify that the payload is correctly signed.
         let digest = payload.digest();
+        debug!("Received other digest {:?} at time {:?}", digest, Instant::now());
         payload.signature.verify(&digest, &author)?;
 
         // Store payload.
