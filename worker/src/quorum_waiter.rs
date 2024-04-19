@@ -71,7 +71,7 @@ impl QuorumWaiter {
             // Wait for the first 2f nodes to send back an Ack. Then we consider the batch
             // delivered and we send its digest to the primary (that will include it into
             // the dag). This should reduce the amount of synching.
-            /*let mut total_stake = self.stake;
+            let mut total_stake = self.stake;
             while let Some(stake) = wait_for_quorum.next().await {
                 total_stake += stake;
                 if total_stake >= self.committee.quorum_threshold() {
@@ -81,7 +81,7 @@ impl QuorumWaiter {
                         .expect("Failed to deliver batch");
                     break;
                 }
-            }*/
+            }
         }
     }
 }
