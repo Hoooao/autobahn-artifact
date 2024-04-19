@@ -338,11 +338,14 @@ impl MessageHandler for PrimaryReceiverHandler {
         // Deserialize the message and send it to the synchronizer.
         match bincode::deserialize(&serialized) {
             Err(e) => error!("Failed to deserialize primary message: {}", e),
-            Ok(message) => self
+            Ok(message) => { 
+                debug!("Received primary message: {:?}", message);
+                self
                 .tx_synchronizer
                 .send(message)
                 .await
-                .expect("Failed to send transaction"),
+                .expect("Failed to send transaction")
+            },
         }
         Ok(())
     }

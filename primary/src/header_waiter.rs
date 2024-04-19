@@ -9,7 +9,7 @@ use futures::future::try_join_all;
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
 use log::{debug, error};
-use network::SimpleSender;
+use network::{CancelHandler, ReliableSender, SimpleSender};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -52,7 +52,8 @@ pub struct HeaderWaiter {
     tx_core: Sender<Header>,
 
     /// Network driver allowing to send messages.
-    network: SimpleSender,
+    //network: SimpleSender,
+    network: ReliableSender,
     /// Keeps the digests of the all certificates for which we sent a sync request,
     /// along with a timestamp (`u128`) indicating when we sent the request.
     parent_requests: HashMap<Digest, (Round, u128)>,
@@ -62,6 +63,8 @@ pub struct HeaderWaiter {
     /// List of digests (either certificates, headers or tx batch) that are waiting
     /// to be processed. Their processing will resume when we get all their dependencies.
     pending: HashMap<Digest, (Round, Sender<()>)>,
+    // Cancel hanlders
+    cancel_handlers: Vec<CancelHandler>,
 }
 
 impl HeaderWaiter {
@@ -88,10 +91,12 @@ impl HeaderWaiter {
                 sync_retry_nodes,
                 rx_synchronizer,
                 tx_core,
-                network: SimpleSender::new(),
+                //network: SimpleSender::new(),
+                network: ReliableSender::new(),
                 parent_requests: HashMap::new(),
                 batch_requests: HashMap::new(),
                 pending: HashMap::new(),
+                cancel_handlers: Vec::new(),
             }
             .run()
             .await;
@@ -171,7 +176,8 @@ impl HeaderWaiter {
                                 let message = PrimaryWorkerMessage::Synchronize(digests, author);
                                 let bytes = bincode::serialize(&message)
                                     .expect("Failed to serialize batch sync request");
-                                self.network.send(address, Bytes::from(bytes)).await;
+                                let handler = self.network.send(address, Bytes::from(bytes)).await;
+                                self.cancel_handlers.push(handler);
                             }
                         }
 
@@ -219,7 +225,8 @@ impl HeaderWaiter {
                                     .primary_to_primary;
                                 let message = PrimaryMessage::CertificatesRequest(requires_sync, self.name);
                                 let bytes = bincode::serialize(&message).expect("Failed to serialize cert request");
-                                self.network.send(address, Bytes::from(bytes)).await;
+                                let handler = self.network.send(address, Bytes::from(bytes)).await;
+                                self.cancel_handlers.push(handler);
                             }
                         }
                     }
@@ -269,7 +276,8 @@ impl HeaderWaiter {
                         .collect();
                     let message = PrimaryMessage::CertificatesRequest(retry, self.name);
                     let bytes = bincode::serialize(&message).expect("Failed to serialize cert request");
-                    self.network.lucky_broadcast(addresses, Bytes::from(bytes), self.sync_retry_nodes).await;
+                    let handlers = self.network.lucky_broadcast(addresses, Bytes::from(bytes), self.sync_retry_nodes).await;
+                    self.cancel_handlers.extend(handlers);
 
                     // Reschedule the timer.
                     timer.as_mut().reset(Instant::now() + Duration::from_millis(TIMER_RESOLUTION));
