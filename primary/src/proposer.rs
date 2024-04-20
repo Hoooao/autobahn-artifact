@@ -78,7 +78,7 @@ impl Proposer {
                 last_leader: None,
                 digests: Vec::with_capacity(2 * header_size),
                 payload_size: 0,
-                cap_size: 10,
+                cap_size: 5,
             }
             .run()
             .await;

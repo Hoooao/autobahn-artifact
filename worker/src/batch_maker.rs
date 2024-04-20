@@ -208,7 +208,7 @@ impl BatchMaker {
             //debug!("addresses is {:?}", new_addresses);
             //self.partition_queue.push_back(message);
             //debug!("partition queue size is {:?}", self.partition_queue.len());
-            self.network.broadcast(new_addresses, bytes).await; 
+            //self.network.broadcast(new_addresses, bytes).await; 
         } else {
             //debug!("sending batch normally");
             let (_, addresses): (Vec<_>, _) = self.workers_addresses.iter().cloned().unzip();
