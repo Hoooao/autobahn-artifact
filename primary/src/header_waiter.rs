@@ -175,7 +175,7 @@ impl HeaderWaiter {
                             }
                             for (worker_id, digests) in requires_sync {
                                 let address = self.committee
-                                    .worker(&author, &worker_id)
+                                    .worker(&self.name, &worker_id)
                                     .expect("Author of valid header is not in the committee")
                                     .primary_to_worker;
                                 debug!("header wait syncing batches {:?} to address {:?}", digests, address);
