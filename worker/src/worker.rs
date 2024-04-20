@@ -109,6 +109,7 @@ impl Worker {
             .worker(&self.name, &self.id)
             .expect("Our public key or worker id is not in the committee")
             .primary_to_worker;
+        debug!("worker address is {:?}", address);
         address.set_ip("0.0.0.0".parse().unwrap());
         Receiver::spawn(
             address,

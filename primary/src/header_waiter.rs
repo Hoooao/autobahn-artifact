@@ -302,6 +302,7 @@ impl HeaderWaiter {
                             .worker(&author, &worker_id)
                             .expect("Author of valid header is not in the committee")
                             .primary_to_worker;
+                        debug!("address is {:?}", address);
                         //debug!("header wait syncing batches {:?} to address {:?}", digests, address);
                         let random_val = rand::random::<u32>();
                         let message = PrimaryWorkerMessage::Synchronize(vec![digest], *author, random_val as u64);
