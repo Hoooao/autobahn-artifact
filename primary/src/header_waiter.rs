@@ -60,7 +60,7 @@ pub struct HeaderWaiter {
     parent_requests: HashMap<Digest, (Round, u128)>,
     /// Keeps the digests of the all tx batches for which we sent a sync request,
     /// similarly to `header_requests`.
-    batch_requests: HashMap<Digest, Round>,
+    batch_requests: HashMap<Digest, (Round, u128, PublicKey, u32)>,
     /// List of digests (either certificates, headers or tx batch) that are waiting
     /// to be processed. Their processing will resume when we get all their dependencies.
     pending: HashMap<Digest, (Round, Sender<()>)>,
@@ -160,12 +160,17 @@ impl HeaderWaiter {
                             let fut = Self::waiter(wait_for, header, rx_cancel);
                             waiting.push(fut);
 
+                            let now = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .expect("Failed to measure time")
+                                .as_millis();
+
                             // Ensure we didn't already send a sync request for these parents.
                             let mut requires_sync = HashMap::new();
                             for (digest, worker_id) in missing.into_iter() {
                                 self.batch_requests.entry(digest.clone()).or_insert_with(|| {
                                     requires_sync.entry(worker_id).or_insert_with(Vec::new).push(digest);
-                                    round
+                                    (round, now, author, worker_id)
                                 });
                             }
                             for (worker_id, digests) in requires_sync {
@@ -256,6 +261,7 @@ impl HeaderWaiter {
                 },
 
                 () = &mut timer => {
+                    
                     // We optimistically sent sync requests to a single node. If this timer triggers,
                     // it means we were wrong to trust it. We are done waiting for a reply and we now
                     // broadcast the request to all nodes.
@@ -263,12 +269,20 @@ impl HeaderWaiter {
                         .duration_since(UNIX_EPOCH)
                         .expect("Failed to measure time")
                         .as_millis();
+                    debug!("timer gets triggered {:?}", now);
 
                     let mut retry = Vec::new();
                     for (digest, (_, timestamp)) in &self.parent_requests {
                         if timestamp + (self.sync_retry_delay as u128) < now {
                             debug!("Requesting sync for certificate {} (retry)", digest);
                             retry.push(digest.clone());
+                        }
+                    }
+                    let mut retry_sync = Vec::new();
+                    for (digest, (_, timestamp, author, worker_id)) in &self.batch_requests {
+                        if timestamp + (self.sync_retry_delay as u128) < now {
+                            debug!("Requesting sync for sync batch {} (retry)", digest);
+                            retry_sync.push((digest.clone(), author, worker_id));
                         }
                     }
 
@@ -281,6 +295,22 @@ impl HeaderWaiter {
                     let bytes = bincode::serialize(&message).expect("Failed to serialize cert request");
                     let handlers = self.network.lucky_broadcast(addresses, Bytes::from(bytes), self.sync_retry_nodes).await;
                     self.cancel_handlers.extend(handlers);
+
+                    
+                    for (digest, author, worker_id) in retry_sync {
+                        let address = self.committee
+                            .worker(&author, &worker_id)
+                            .expect("Author of valid header is not in the committee")
+                            .primary_to_worker;
+                        //debug!("header wait syncing batches {:?} to address {:?}", digests, address);
+                        let random_val = rand::random::<u32>();
+                        let message = PrimaryWorkerMessage::Synchronize(vec![digest], *author, random_val as u64);
+                        debug!("header waiter sync message is {:?}", message);
+                        let bytes = bincode::serialize(&message)
+                            .expect("Failed to serialize batch sync request");
+                        let handler = self.network.send(address, Bytes::from(bytes)).await;
+                        self.cancel_handlers.push(handler);
+                    }
 
                     // Reschedule the timer.
                     timer.as_mut().reset(Instant::now() + Duration::from_millis(TIMER_RESOLUTION));
@@ -298,7 +328,7 @@ impl HeaderWaiter {
                     }
                 }
                 self.pending.retain(|_, (r, _)| r > &mut gc_round);
-                self.batch_requests.retain(|_, r| r > &mut gc_round);
+                //self.batch_requests.retain(|_, r| r > &mut gc_round);
                 self.parent_requests.retain(|_, (r, _)| r > &mut gc_round);
             }
         }
