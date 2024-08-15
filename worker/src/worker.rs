@@ -154,7 +154,7 @@ impl Worker {
             /* handler */ TxReceiverHandler { tx_batch_maker },
         );
 
-        let mut keys: Vec<_> = self.committee.authorities.keys().cloned().collect();
+        /*let mut keys: Vec<_> = self.committee.authorities.keys().cloned().collect();
         let mut partition_public_keys = HashSet::new();
         keys.sort();
         let index = keys.binary_search(&self.name).unwrap();
@@ -179,7 +179,7 @@ impl Worker {
             partition_public_keys.insert(keys[j]);
         }
 
-        debug!("partition pks are {:?}", partition_public_keys);
+        debug!("partition pks are {:?}", partition_public_keys);*/
 
         // The transactions are sent to the `BatchMaker` that assembles them into batches. It then broadcasts
         // (in a reliable manner) the batches to all other workers that share the same `id` as us. Finally, it
@@ -196,7 +196,14 @@ impl Worker {
                 .iter()
                 .map(|(name, addresses)| (*name, addresses.worker_to_worker))
                 .collect(),
-            partition_public_keys,
+            //partition_public_keys,
+            self.parameters.simulate_asynchrony.clone(),
+            self.parameters.asynchrony_type.clone(),
+            self.parameters.asynchrony_start.clone(),
+            self.parameters.asynchrony_duration.clone(),
+            self.parameters.affected_nodes.clone(),
+            self.committee.authorities.keys().cloned().collect(),
+            self.name.clone(),
         );
 
         // // The `QuorumWaiter` waits for 2f authorities to acknowledge reception of the batch. It then forwards
