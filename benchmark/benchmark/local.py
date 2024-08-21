@@ -41,19 +41,23 @@ class LocalBench:
 
         # Kill any previous testbed.
         self._kill_nodes()
-
+        
         try:
             Print.info('Setting up testbed...')
             nodes, rate = self.nodes[0], self.rate[0]
 
             # Cleanup all files.
             cmd = f'{CommandMaker.clean_logs()} ; {CommandMaker.cleanup()}'
+            print('before run')
             subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
+            print('after run')
             sleep(0.5)  # Removing the store may take time.
 
+            print('past cleanup')
             # Recompile the latest code.
             cmd = CommandMaker.compile().split()
             subprocess.run(cmd, check=True, cwd=PathMaker.node_crate_path())
+            print('past compiled')
 
             # Create alias for the client and nodes binary.
             cmd = CommandMaker.alias_binaries(PathMaker.binary_path())
@@ -66,8 +70,10 @@ class LocalBench:
                 cmd = CommandMaker.generate_key(filename).split()
                 subprocess.run(cmd, check=True)
                 keys += [Key.from_file(filename)]
+            print('past keys')
 
             names = [x.name for x in keys]
+            #print('num workers', self.workers)
             committee = LocalCommittee(names, self.BASE_PORT, self.workers)
             committee.print(PathMaker.committee_file())
 
@@ -86,6 +92,7 @@ class LocalBench:
                     )
                     log_file = PathMaker.client_log_file(i, id)
                     self._background_run(cmd, log_file)
+            print('past workers')
 
             # Run the primaries (except the faulty ones).
             for i, address in enumerate(committee.primary_addresses(self.faults)):
@@ -97,6 +104,7 @@ class LocalBench:
                     debug=debug
                 )
                 log_file = PathMaker.primary_log_file(i)
+                print(cmd)
                 self._background_run(cmd, log_file)
 
             # Run the workers (except the faulty ones).
