@@ -25,6 +25,9 @@ class Committee:
         "authorities: {
             "name": {
                 "stake": 1,
+                "consensus: {
+                    "consensus_to_consensus": x.x.x.x:x,
+                },
                 "primary: {
                     "primary_to_primary": x.x.x.x:x,
                     "worker_to_primary": x.x.x.x:x,
@@ -62,8 +65,14 @@ class Committee:
 
         port = base_port
         self.json = {'authorities': OrderedDict()}
+
         for name, hosts in addresses.items():
             host = hosts.pop(0)
+            consensus_addr = {
+                'consensus_to_consensus': f'{host}:{port}',
+            }
+            port += 1
+
             primary_addr = {
                 'primary_to_primary': f'{host}:{port}',
                 'worker_to_primary': f'{host}:{port + 1}'
@@ -81,6 +90,7 @@ class Committee:
 
             self.json['authorities'][name] = {
                 'stake': 1,
+                'consensus': consensus_addr,
                 'primary': primary_addr,
                 'workers': workers_addr
             }
@@ -115,6 +125,9 @@ class Committee:
 
         ips = set()
         for name in names:
+            addresses = self.json['authorities'][name]['consensus']
+            ips.add(self.ip(addresses['consensus_to_consensus']))
+
             addresses = self.json['authorities'][name]['primary']
             ips.add(self.ip(addresses['primary_to_primary']))
             ips.add(self.ip(addresses['worker_to_primary']))
@@ -165,6 +178,7 @@ class NodeParameters:
     def __init__(self, json):
         inputs = []
         try:
+            inputs += [json['timeout_delay']]
             inputs += [json['header_size']]
             inputs += [json['max_header_delay']]
             inputs += [json['gc_depth']]
@@ -203,7 +217,6 @@ class BenchParameters:
                 raise ConfigError('Missing input rate')
             self.rate = [int(x) for x in rate]
 
-            
             self.workers = int(json['workers'])
 
             if 'collocate' in json:
@@ -212,10 +225,15 @@ class BenchParameters:
                 self.collocate = True
 
             self.tx_size = int(json['tx_size'])
-           
+
             self.duration = int(json['duration'])
 
             self.runs = int(json['runs']) if 'runs' in json else 1
+            self.simulate_partition = bool(json['simulate_partition'])
+
+            self.partition_nodes = int(json['partition_nodes'])
+            self.partition_start = int(json['partition_start'])
+            self.partition_duration = int(json['partition_duration'])
         except KeyError as e:
             raise ConfigError(f'Malformed bench parameters: missing key {e}')
 

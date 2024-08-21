@@ -7,7 +7,7 @@
     "repo": {
         "name": "autobahn-artifact",
         "url": "https://github.com/neilgiri/autobahn-artifact.git",
-        "branch": "bullshark-blips"
+        "branch": "autobahn"
     },
     "project_id": "<PROJECT_ID>",
     "username": "<USERNAME>",
