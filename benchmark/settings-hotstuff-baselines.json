@@ -12,7 +12,7 @@
     "repo": {
         "name": "autobahn-artifact",
         "url": "https://github.com/neilgiri/autobahn-artifact.git",
-        "branch": "batched-hs-blips"
+        "branch": "vanilla-hs"
     },
     "username": "<USERNAME>",
     "project_id": "<PROJECT_ID>",
