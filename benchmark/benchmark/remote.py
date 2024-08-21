@@ -308,7 +308,7 @@ class Bench:
         duration = bench_parameters.duration
         for i in progress_bar(range(20), prefix=f'Running benchmark ({duration} sec):'):
             tick_size = ceil(duration / 20)
-            print(tick_size, i, bench_parameters.partition_start, bench_parameters.simulate_partition)
+            #print(tick_size, i, bench_parameters.partition_start, bench_parameters.simulate_partition)
             if bench_parameters.simulate_partition and i*tick_size == bench_parameters.partition_start:
                 print('simulating partition')
                 self._simulate_partition(bench_parameters, committee, faults)
