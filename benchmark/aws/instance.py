@@ -221,7 +221,7 @@ class InstanceManager:
             text += f'\n Zone: {zone.upper()}\n'
             for i, ip in enumerate(ips):
                 new_line = '\n' if (i+1) % 6 == 0 else ''
-                text += f'{new_line} {i}\tssh -i {key} neilgiridharan@{ip}\n'
+                text += f'{new_line} {i}\tssh -i {key} {self.settings.username}@{ip}\n'
         print(
             '\n'
             '----------------------------------------------------------------\n'
