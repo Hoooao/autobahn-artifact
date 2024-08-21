@@ -66,7 +66,6 @@ class Committee:
         port = base_port
         self.json = {'authorities': OrderedDict()}
 
-        #print(addresses)
         for name, hosts in addresses.items():
             host = hosts.pop(0)
             consensus_addr = {
@@ -230,6 +229,11 @@ class BenchParameters:
             self.duration = int(json['duration'])
 
             self.runs = int(json['runs']) if 'runs' in json else 1
+            self.simulate_partition = bool(json['simulate_partition'])
+
+            self.partition_nodes = int(json['partition_nodes'])
+            self.partition_start = int(json['partition_start'])
+            self.partition_duration = int(json['partition_duration'])
         except KeyError as e:
             raise ConfigError(f'Malformed bench parameters: missing key {e}')
 

@@ -107,9 +107,9 @@ class LogParser:
         commits = self._merge_results([tmp])
 
         configs = {
-            'timeout_delay': int(
-                search(r'Timeout delay .* (\d+)', log).group(1)
-            ),
+            #'timeout_delay': int(
+            #    search(r'Timeout delay .* (\d+)', log).group(1)
+            #),
             'header_size': int(
                 search(r'Header size .* (\d+)', log).group(1)
             ),
@@ -204,7 +204,7 @@ class LogParser:
         return mean(latency) if latency else 0
 
     def result(self):
-        timeout_delay = self.configs[0]['timeout_delay']
+        #timeout_delay = self.configs[0]['timeout_delay']
         header_size = self.configs[0]['header_size']
         max_header_delay = self.configs[0]['max_header_delay']
         gc_depth = self.configs[0]['gc_depth']
@@ -232,7 +232,7 @@ class LogParser:
             f' Transaction size: {self.size[0]:,} B\n'
             f' Execution time: {round(duration):,} s\n'
             '\n'
-            f' Timeout delay: {timeout_delay:,} ms\n'
+            #f' Timeout delay: {timeout_delay:,} ms\n'
             f' Header size: {header_size:,} B\n'
             f' Max header delay: {max_header_delay:,} ms\n'
             f' GC depth: {gc_depth:,} round(s)\n'

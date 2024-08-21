@@ -14,11 +14,11 @@
         "url": "https://github.com/neilgiri/autobahn-artifact.git",
         "branch": "vanilla-hs"
     },
-    "username": "neilg",
-    "project_id": "aerial-sandbox-433101-e6",
+    "username": "<USERNAME>",
+    "project_id": "<PROJECT_ID>",
     "instances": {
         "type": "t2d-standard-4",
         "regions": ["us-east1-b", "us-east5-a", "us-west1-b", "us-west4-a"],
-        "templates": ["projects/aerial-sandbox-433101-e6/regions/us-east1/instanceTemplates/us-east1-template2", "projects/aerial-sandbox-433101-e6/regions/us-east5/instanceTemplates/us-east5-template2", "projects/aerial-sandbox-433101-e6/regions/us-west1/instanceTemplates/us-west1-template2","projects/aerial-sandbox-433101-e6/regions/us-west4/instanceTemplates/us-west4-template2"]
+        "templates": ["projects/<PROJECT_ID>/regions/us-east1/instanceTemplates/<TEMPLATE_NAME>", "projects/<PROJECT_ID>/regions/us-east5/instanceTemplates/<TEMPLATE_NAME>", "projects/<PROJECT_ID>/regions/us-west1/instanceTemplates/<TEMPLATE_NAME>","projects/<PROJECT_ID>/regions/us-west4/instanceTemplates/<TEMPLATE_NAME>"]
     }
 }

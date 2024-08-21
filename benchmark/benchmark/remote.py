@@ -14,7 +14,7 @@ from benchmark.config import Committee, Key, NodeParameters, BenchParameters, Co
 from benchmark.utils import BenchError, Print, PathMaker, progress_bar
 from benchmark.commands import CommandMaker
 from benchmark.logs import LogParser, ParseError
-from benchmark.instance import InstanceManager
+from benchmark.gcp_instance import InstanceManager
 
 
 class FabricError(Exception):
@@ -74,8 +74,9 @@ class Bench:
             f'(git clone {self.settings.repo_url} || (cd {self.settings.repo_name} ; git pull))'
         ]
         hosts = self.manager.hosts(flat=True)
+        print(hosts)
         try:
-            g = Group(*hosts, user='ubuntu', connect_kwargs=self.connect)
+            g = Group(*hosts, user=self.settings.username, connect_kwargs=self.connect)
             g.run(' && '.join(cmd), hide=True)
             Print.heading(f'Initialized testbed of {len(hosts)} nodes')
         except (GroupException, ExecutionError) as e:
@@ -89,7 +90,7 @@ class Bench:
         delete_logs = CommandMaker.clean_logs() if delete_logs else 'true'
         cmd = [delete_logs, f'({CommandMaker.kill()} || true)']
         try:
-            g = Group(*hosts, user='ubuntu', connect_kwargs=self.connect)
+            g = Group(*hosts, user=self.settings.username, connect_kwargs=self.connect)
             g.run(' && '.join(cmd), hide=True)
         except GroupException as e:
             raise BenchError('Failed to kill nodes', FabricError(e))
@@ -129,10 +130,47 @@ class Bench:
                 selected.append(ips)
             return selected
 
+    def _select_hosts_config(self, bench_parameters):
+        # Collocate the primary and its workers on the same machine.
+        if bench_parameters.collocate:
+            nodes = max(bench_parameters.nodes)
+
+            # Ensure there are enough hosts.
+            hosts = self.manager.internal_hosts()
+            if sum(len(x) for x in hosts.values()) < nodes:
+                return []
+
+            # Select the hosts in different data centers.
+            ordered = zip(*hosts.values())
+            ordered = [x for y in ordered for x in y]
+            return ordered[:nodes]
+
+        # Spawn the primary and each worker on a different machine. Each
+        # authority runs in a single data center.
+        else:
+            primaries = max(bench_parameters.nodes)
+
+            # Ensure there are enough hosts.
+            hosts = self.manager.internal_hosts()
+            if len(hosts.keys()) < primaries:
+                return []
+            for ips in hosts.values():
+                if len(ips) < bench_parameters.workers + 1:
+                    return []
+
+            # Ensure the primary and its workers are in the same region.
+            selected = []
+            for region in list(hosts.keys())[:primaries]:
+                ips = list(hosts[region])[:bench_parameters.workers + 1]
+                selected.append(ips)
+            return selected
+
+
+
     def _background_run(self, host, command, log_file):
         name = splitext(basename(log_file))[0]
         cmd = f'tmux new -d -s "{name}" "{command} |& tee {log_file}"'
-        c = Connection(host, user='ubuntu', connect_kwargs=self.connect)
+        c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
         output = c.run(cmd, hide=True)
         self._check_stderr(output)
 
@@ -155,7 +193,7 @@ class Bench:
                 f'./{self.settings.repo_name}/target/release/'
             )
         ]
-        g = Group(*ips, user='ubuntu', connect_kwargs=self.connect)
+        g = Group(*ips, user=self.settings.username, connect_kwargs=self.connect)
         g.run(' && '.join(cmd), hide=True)
 
     def _config(self, hosts, node_parameters, bench_parameters):
@@ -202,7 +240,7 @@ class Bench:
         progress = progress_bar(names, prefix='Uploading config files:')
         for i, name in enumerate(progress):
             for ip in committee.ips(name):
-                c = Connection(ip, user='ubuntu', connect_kwargs=self.connect)
+                c = Connection(ip, user=self.settings.username, connect_kwargs=self.connect)
                 c.run(f'{CommandMaker.cleanup()} || true', hide=True)
                 c.put(PathMaker.committee_file(), '.')
                 c.put(PathMaker.key_file(i), '.')
@@ -232,6 +270,7 @@ class Bench:
                     rate_share,
                     [x for y in workers_addresses for _, x in y]
                 )
+                print(cmd)
                 log_file = PathMaker.client_log_file(i, id)
                 self._background_run(host, cmd, log_file)
 
@@ -265,11 +304,84 @@ class Bench:
                 log_file = PathMaker.worker_log_file(i, id)
                 self._background_run(host, cmd, log_file)
 
-        # Wait for all transactions to be processed.
+         # Wait for all transactions to be processed.
         duration = bench_parameters.duration
-        for _ in progress_bar(range(20), prefix=f'Running benchmark ({duration} sec):'):
+        for i in progress_bar(range(20), prefix=f'Running benchmark ({duration} sec):'):
+            tick_size = ceil(duration / 20)
+            print(tick_size, i, bench_parameters.partition_start, bench_parameters.simulate_partition)
+            if bench_parameters.simulate_partition and i*tick_size == bench_parameters.partition_start:
+                print('simulating partition')
+                self._simulate_partition(bench_parameters, committee, faults)
+            
+            if bench_parameters.simulate_partition and i*tick_size == bench_parameters.partition_start + bench_parameters.partition_duration:
+                print('deleting partition')
+                self._delete_partition(bench_parameters, committee, faults)
+
             sleep(ceil(duration / 20))
         self.kill(hosts=hosts, delete_logs=False)
+
+    def _simulate_partition(self, bench_parameters, committee, faults):
+        partition_ips = []
+        for i, address in enumerate(committee.primary_addresses(faults)):
+            if i < bench_parameters.partition_nodes:
+                print(i, address)
+                cmd = []
+                #cmd = ['sudo tc qdisc del dev ens4 root']
+                cmd.append('sudo tc qdisc add dev ens4 root handle 1: htb')
+                cmd.append('sudo tc class add dev ens4 parent 1: classid 1:1 htb rate 10gibps')
+                idx = 2
+                for j, addr in enumerate(committee.primary_addresses(faults)):
+                    if i == j:
+                        continue
+                    cmd.append('sudo tc class add dev ens4 parent 1:1 classid 1:' + str(idx) + ' htb rate 10gibps')
+                    cmd.append('sudo tc qdisc add dev ens4 handle ' + str(idx) + ': parent 1:' 
+                            + str(idx) + ' netem delay 5000ms')
+                    cmd.append('sudo tc filter add dev ens4 pref ' + str(idx) + ' protocol ip u32 match ip dst ' + 
+                            Committee.ip(addr) + ' flowid 1:' + str(idx))
+                    idx = idx + 1
+                ip = [Committee.ip(address)]
+                g = Group(*ip, user=self.settings.username, connect_kwargs=self.connect)
+                g.run(' && '.join(cmd), hide=True) 
+        
+
+         
+        #hosts = committee.ips()
+        #cmd = ['sudo iptables -A OUTPUT -d ' + ip + ' -j DROP' for ip in partition_ips]
+        #cmd = ['sudo tc qdisc add dev ens4 root netem delay 5000ms']
+        
+        #g = Group(*partition_ips, user='neilgiridharan', connect_kwargs=self.connect)
+        #g.run(' && '.join(cmd), hide=True) 
+        
+        #for i, address in enumerate(committee.primary_addresses(faults)):
+        
+        #host = Committee.ip(address)
+        #for partition_ip in partition_ips:
+        #cmd = 'sudo iptables -A OUTPUT -d ' + partition_ip + '-j DROP'
+        
+        ##log_file = PathMaker.primary_log_file(i)
+        #self._background_run(host, cmd, log_file)
+    
+    def _delete_partition(self, bench_parameters, committee, faults):
+        partition_ips = []
+        for i, address in enumerate(committee.primary_addresses(faults)):
+            if i < bench_parameters.partition_nodes:
+                partition_ips = [Committee.ip(address)]
+                cmd = ['sudo tc qdisc del dev ens4 root']
+                g = Group(*partition_ips, user=self.settings.username, connect_kwargs=self.connect)
+                g.run(' && '.join(cmd), hide=True) 
+
+       
+        #hosts = committee.ips()
+        #cmd = ['sudo iptables -F']
+        #cmd = ['sudo tc qdisc del dev ens4 root']
+        #g = Group(*partition_ips, user='neilgiridharan', connect_kwargs=self.connect)
+        #g.run(' && '.join(cmd), hide=True) 
+        
+        #for i, address in enumerate(committee.primary_addresses(faults)):
+        #    host = Committee.ip(address)
+        #    cmd = 'sudo iptables -F'
+        #    log_file = PathMaker.primary_log_file(i)
+        #    self._background_run(host, cmd, log_file)
 
     def _logs(self, committee, faults):
         # Delete local logs (if any).
@@ -282,7 +394,7 @@ class Bench:
         for i, addresses in enumerate(progress):
             for id, address in addresses:
                 host = Committee.ip(address)
-                c = Connection(host, user='ubuntu', connect_kwargs=self.connect)
+                c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
                 c.get(
                     PathMaker.client_log_file(i, id), 
                     local=PathMaker.client_log_file(i, id)
@@ -296,7 +408,7 @@ class Bench:
         progress = progress_bar(primary_addresses, prefix='Downloading primaries logs:')
         for i, address in enumerate(progress):
             host = Committee.ip(address)
-            c = Connection(host, user='ubuntu', connect_kwargs=self.connect)
+            c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
             c.get(
                 PathMaker.primary_log_file(i), 
                 local=PathMaker.primary_log_file(i)
@@ -322,6 +434,7 @@ class Bench:
             return
 
         # Update nodes.
+        print(selected_hosts)
         try:
             self._update(selected_hosts, bench_parameters.collocate)
         except (GroupException, ExecutionError) as e:
