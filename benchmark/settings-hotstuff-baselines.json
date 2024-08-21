@@ -1,0 +1,24 @@
+{
+    "key": {
+        "name": "gcp",
+        "path": "<PATH>"
+    },
+    "port": "5000",
+    "ports": {
+        "consensus": 8000,
+        "mempool": 7000,
+        "front": 6000
+    },
+    "repo": {
+        "name": "autobahn-artifact",
+        "url": "https://github.com/neilgiri/autobahn-artifact.git",
+        "branch": "vanilla-hs"
+    },
+    "username": "neilg",
+    "project_id": "aerial-sandbox-433101-e6",
+    "instances": {
+        "type": "t2d-standard-4",
+        "regions": ["us-east1-b", "us-east5-a", "us-west1-b", "us-west4-a"],
+        "templates": ["projects/aerial-sandbox-433101-e6/regions/us-east1/instanceTemplates/us-east1-template2", "projects/aerial-sandbox-433101-e6/regions/us-east5/instanceTemplates/us-east5-template2", "projects/aerial-sandbox-433101-e6/regions/us-west1/instanceTemplates/us-west1-template2","projects/aerial-sandbox-433101-e6/regions/us-west4/instanceTemplates/us-west4-template2"]
+    }
+}
