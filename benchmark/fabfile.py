@@ -14,20 +14,33 @@ def local(ctx, debug=True):
     ''' Run benchmarks on localhost '''
     bench_params = {
         'faults': 0,
-        'nodes': 4,
+        'nodes': [4],
         'workers': 1,
-        'rate': 50_000,
+        'co-locate': True,
+        'rate': [240_000],
         'tx_size': 512,
-        'duration': 5,
+        'duration': 60,
+        'runs': 1,
+
+        # Unused
+        'simulate_partition': True,
+        'partition_start': 5,
+        'partition_duration': 5,
+        'partition_nodes': 1,
     }
     node_params = {
-        'header_size': 1_000,  # bytes
-        'max_header_delay': 200,  # ms
+        'timeout_delay': 5_000,  # ms
+        'header_size': 32,  # bytes
+        'max_header_delay': 5_000,  # ms
         'gc_depth': 50,  # rounds
         'sync_retry_delay': 5_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
         'batch_size': 500_000,  # bytes
-        'max_batch_delay': 200  # ms
+        'max_batch_delay': 20,  # ms
+
+        'simulate_asynchrony': False,
+        'asynchrony_start': 15_000, #ms
+        'asynchrony_duration': 3_000, #ms
     }
     try:
         ret = LocalBench(bench_params, node_params).run(debug)
