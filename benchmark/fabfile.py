@@ -11,25 +11,28 @@ from aws.remote import Bench, BenchError
 @task
 def local(ctx):
     ''' Run benchmarks on localhost '''
-
     bench_params = {
-        'nodes': 4,
-        'rate': 50_000,
+        'nodes': [4],
+        'rate': [190_000],
         'tx_size': 512,
         'faults': 0,
-        'duration': 20,
+        'duration': 60,
+        'runs': 1,
     }
     node_params = {
         'consensus': {
-            'timeout_delay': 1_000,
-            'sync_retry_delay': 10_000,
-            'max_payload_size': 5000,
-            'min_block_delay': 0
+            'timeout_delay': 5_000,
+            'sync_retry_delay': 5_000,
+            'max_payload_size': 500,
+            'min_block_delay': 0,
+            'simulate_asynchrony': False,
+            'asynchrony_start': 15_000,
+            'asynchrony_duration': 30_000
         },
         'mempool': {
-            'queue_capacity': 10_000,
-            'sync_retry_delay': 100_000,
-            'max_payload_size': 15_000,
+            'queue_capacity': 10_000_000,
+            'sync_retry_delay': 5_000,
+            'max_payload_size': 500_000,
             'min_block_delay': 0
         }
     }
@@ -99,7 +102,7 @@ def remote(ctx):
     ''' Run benchmarks on AWS '''
     bench_params = {
         'nodes': [4],
-        'rate': [20_000],
+        'rate': [190_000],
         'tx_size': 512,
         'faults': 0,
         'duration': 60,
@@ -109,14 +112,17 @@ def remote(ctx):
         'consensus': {
             'timeout_delay': 5_000,
             'sync_retry_delay': 5_000,
-            'max_payload_size': 500_000,
-            'min_block_delay': 100
+            'max_payload_size': 500,
+            'min_block_delay': 0,
+            'simulate_asynchrony': False,
+            'asynchrony_start': 15_000,
+            'asynchrony_duration': 30_000
         },
         'mempool': {
-            'queue_capacity': 100_000,
+            'queue_capacity': 10_000_000,
             'sync_retry_delay': 5_000,
             'max_payload_size': 500_000,
-            'min_block_delay': 100
+            'min_block_delay': 0
         }
     }
     try:
