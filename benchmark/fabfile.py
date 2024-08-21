@@ -14,20 +14,48 @@ def local(ctx, debug=True):
     ''' Run benchmarks on localhost '''
     bench_params = {
         'faults': 0,
-        'nodes': 4,
+        'nodes': [4],
         'workers': 1,
-        'rate': 50_000,
+        'co-locate': True,
+        'rate': [15_000],
         'tx_size': 512,
-        'duration': 5,
+        'duration': 60,
+        'runs': 1,
+
+        # Unused
+        'simulate_partition': False,
+        'partition_start': 9,
+        'partition_duration': 3,
+        'partition_nodes': 1,
     }
     node_params = {
-        'header_size': 1_000,  # bytes
+        'timeout_delay': 1_000,  # ms
+        'header_size': 32,  # bytes
         'max_header_delay': 200,  # ms
         'gc_depth': 50,  # rounds
-        'sync_retry_delay': 5_000,  # ms
-        'sync_retry_nodes': 3,  # number of nodes
-        'batch_size': 500_000,  # bytes
-        'max_batch_delay': 200  # ms
+        'sync_retry_delay': 1_000,  # ms
+        'sync_retry_nodes': 4,  # number of nodes
+        'batch_size': 250_000,  # bytes
+        'max_batch_delay': 200,  # ms
+
+        'simulate_asynchrony': False,
+        'asynchrony_type': [3],
+
+        'asynchrony_start': [10_000], #ms
+        'asynchrony_duration': [20_000], #ms
+        'affected_nodes': [2],
+        'egress_penalty': 50, #ms
+
+        'use_exponential_timeouts': False,
+        'use_fast_sync': False,
+
+        # Unused
+        #'simulate_partition': False,
+        #'partition_start': 15_000,
+        #'partition_duration': 20_000,
+        #'partition_nodes': 1,
+
+
     }
     try:
         ret = LocalBench(bench_params, node_params).run(debug)
@@ -95,22 +123,48 @@ def remote(ctx, debug=False):
     ''' Run benchmarks on AWS '''
     bench_params = {
         'faults': 0,
-        'nodes': [10, 20],
+        'nodes': [4],
         'workers': 1,
-        'collocate': True,
-        'rate': [10_000, 50_000],
+        'co-locate': True,
+        'rate': [15_000],
         'tx_size': 512,
-        'duration': 300,
-        'runs': 2,
+        'duration': 60,
+        'runs': 1,
+
+        # Unused
+        'simulate_partition': False,
+        'partition_start': 9,
+        'partition_duration': 3,
+        'partition_nodes': 1,
     }
     node_params = {
-        'header_size': 50,  # bytes
-        'max_header_delay': 5_000,  # ms
+        'timeout_delay': 1_000,  # ms
+        'header_size': 32,  # bytes
+        'max_header_delay': 200,  # ms
         'gc_depth': 50,  # rounds
-        'sync_retry_delay': 10_000,  # ms
-        'sync_retry_nodes': 3,  # number of nodes
-        'batch_size': 500_000,  # bytes
-        'max_batch_delay': 200  # ms
+        'sync_retry_delay': 1_000,  # ms
+        'sync_retry_nodes': 4,  # number of nodes
+        'batch_size': 250_000,  # bytes
+        'max_batch_delay': 200,  # ms
+
+        'simulate_asynchrony': True,
+        'asynchrony_type': [3],
+
+        'asynchrony_start': [10_000], #ms
+        'asynchrony_duration': [20_000], #ms
+        'affected_nodes': [2],
+        'egress_penalty': 50, #ms
+
+        'use_exponential_timeouts': False,
+        'use_fast_sync': False,
+
+        # Unused
+        #'simulate_partition': False,
+        #'partition_start': 15_000,
+        #'partition_duration': 20_000,
+        #'partition_nodes': 1,
+
+
     }
     try:
         Bench(ctx).run(bench_params, node_params, debug)
