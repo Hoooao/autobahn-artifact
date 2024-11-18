@@ -51,7 +51,8 @@ class InstanceManager:
                     if instance.name == 'autobahn-instance-template':
                         continue
                     ids[zone] += [instance.name]
-                    ips[zone] += [instance.network_interfaces[0].network_i_p]
+                    # ips[zone] += [instance.network_interfaces[0].network_i_p]
+                    ips[zone] += [instance.network_interfaces[0].access_configs[0].nat_i_p]
         return ids, ips
 
 
@@ -208,7 +209,10 @@ class InstanceManager:
             if not flat:
                 return ips
             else:
-                return [x for y in ips.values() for x in y]
+                res = [x for y in ips.values() for x in y]
+                print("Hosts used: ")
+                print(res)
+                return res
         except ClientError as e:
             raise BenchError('Failed to gather instances IPs', GCPError(e))
 

@@ -77,7 +77,7 @@ class Bench:
         hosts = self.manager.hosts(flat=True)
         try:
             g = Group(*hosts, user=self.settings.username, connect_kwargs=self.connect)
-            g.run(' && '.join(cmd), hide=True)
+            g.run(' && '.join(cmd))
             Print.heading(f'Initialized testbed of {len(hosts)} nodes')
         except (GroupException, ExecutionError) as e:
             e = FabricError(e) if isinstance(e, GroupException) else e
@@ -91,7 +91,7 @@ class Bench:
         cmd = [delete_logs, f'({CommandMaker.kill()} || true)']
         try:
             g = Group(*hosts, user=self.settings.username, connect_kwargs=self.connect)
-            g.run(' && '.join(cmd), hide=True)
+            g.run(' && '.join(cmd))
         except GroupException as e:
             raise BenchError('Failed to kill nodes', FabricError(e))
 
@@ -112,7 +112,7 @@ class Bench:
         name = splitext(basename(log_file))[0]
         cmd = f'tmux new -d -s "{name}" "{command} |& tee {log_file}"'
         c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
-        output = c.run(cmd, hide=True)
+        output = c.run(cmd)
         self._check_stderr(output)
 
     def _update(self, hosts):
@@ -130,7 +130,7 @@ class Bench:
             )
         ]
         g = Group(*hosts, user=self.settings.username, connect_kwargs=self.connect)
-        g.run(' && '.join(cmd), hide=True)
+        g.run(' && '.join(cmd))
 
     def _config(self, hosts, node_parameters):
         Print.info('Generating configuration files...')
@@ -167,7 +167,7 @@ class Bench:
         # Cleanup all nodes.
         cmd = f'{CommandMaker.cleanup()} || true'
         g = Group(*hosts, user=self.settings.username, connect_kwargs=self.connect)
-        g.run(cmd, hide=True)
+        g.run(cmd)
 
         # Upload configuration files.
         progress = progress_bar(hosts, prefix='Uploading config files:')
