@@ -1,0 +1,82 @@
+
+-----------------------------------------
+ RESULTS:
+-----------------------------------------
+ Committee size: 4 nodes
+ Input rate: any tx/s
+ Transaction size: 9 B
+ Faults: 0 nodes
+ Max latency: any ms
+
+ Variable value: X=2948
+ TPS: 2948 +/- 0 tx/s
+ Latency: 266 +/- 1 ms
+
+ Variable value: X=4939
+ TPS: 4939 +/- 3 tx/s
+ Latency: 254 +/- 1 ms
+
+ Variable value: X=7406
+ TPS: 7406 +/- 4 tx/s
+ Latency: 255 +/- 0 ms
+
+ Variable value: X=9960
+ TPS: 9960 +/- 1 tx/s
+ Latency: 247 +/- 1 ms
+
+ Variable value: X=12430
+ TPS: 12430 +/- 2 tx/s
+ Latency: 252 +/- 1 ms
+
+ Variable value: X=14902
+ TPS: 14902 +/- 8 tx/s
+ Latency: 246 +/- 1 ms
+
+ Variable value: X=19928
+ TPS: 19928 +/- 4 tx/s
+ Latency: 196 +/- 1 ms
+
+ Variable value: X=29868
+ TPS: 29868 +/- 5 tx/s
+ Latency: 276 +/- 3 ms
+
+ Variable value: X=49836
+ TPS: 49836 +/- 6 tx/s
+ Latency: 210 +/- 1 ms
+
+ Variable value: X=74642
+ TPS: 74642 +/- 20 tx/s
+ Latency: 297 +/- 0 ms
+
+ Variable value: X=99632
+ TPS: 99632 +/- 16 tx/s
+ Latency: 251 +/- 0 ms
+
+ Variable value: X=149346
+ TPS: 149346 +/- 26 tx/s
+ Latency: 343 +/- 1 ms
+
+ Variable value: X=199142
+ TPS: 199142 +/- 67 tx/s
+ Latency: 418 +/- 39 ms
+
+ Variable value: X=298402
+ TPS: 298402 +/- 23 tx/s
+ Latency: 504 +/- 5 ms
+
+ Variable value: X=397377
+ TPS: 397377 +/- 535 tx/s
+ Latency: 1096 +/- 346 ms
+
+ Variable value: X=337152
+ TPS: 337152 +/- 187517 tx/s
+ Latency: 4947 +/- 795 ms
+
+ Variable value: X=88560
+ TPS: 88560 +/- 11070 tx/s
+ Latency: 4876 +/- 101 ms
+
+ Variable value: X=61686
+ TPS: 61686 +/- 3323 tx/s
+ Latency: 5536 +/- 318 ms
+-----------------------------------------

@@ -5,7 +5,7 @@ from os.path import join
 from re import findall, search
 from statistics import mean
 
-from benchmark.utils import Print
+from benchmark.utils import Print, PathMaker
 
 
 class ParseError(Exception):
@@ -13,7 +13,7 @@ class ParseError(Exception):
 
 
 class LogParser:
-    def __init__(self, clients, nodes, faults=0):
+    def __init__(self, clients, nodes, tx_size=512, faults=0):
         inputs = [clients, nodes]
         assert all(isinstance(x, list) for x in inputs)
         assert all(isinstance(x, str) for y in inputs for x in y)
@@ -21,6 +21,8 @@ class LogParser:
 
         self.faults = faults
         self.committee_size = len(nodes) + faults
+        self.nodes = len(nodes)
+        self.tx_size = tx_size
 
         # Parse the clients logs.
         try:
@@ -173,7 +175,7 @@ class LogParser:
                     list_latencies += [(start-first_start, end-first_start, end-start)]
 
         list_latencies.sort(key=lambda tup: tup[0])
-        with open('latencies.txt', 'w') as f:
+        with open(PathMaker.latency_file(self.nodes, sum(self.rate), self.tx_size, self.faults), 'w') as f:
             for line in list_latencies:
                 f.write(str(line[0]) + ',' + str(line[1]) + ',' + str((line[2])) + '\n')
         return mean(latency) if latency else 0
@@ -223,7 +225,7 @@ class LogParser:
             f.write(self.result())
 
     @classmethod
-    def process(cls, directory, faults=0):
+    def process(cls, directory, faults=0, tx_size=512):
         assert isinstance(directory, str)
 
         clients = []
@@ -235,4 +237,4 @@ class LogParser:
             with open(filename, 'r') as f:
                 nodes += [f.read()]
 
-        return cls(clients, nodes, faults=faults)
+        return cls(clients, nodes,tx_size,faults=faults)
