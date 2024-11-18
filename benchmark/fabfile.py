@@ -118,14 +118,15 @@ def install(ctx):
 @task
 def remote(ctx, debug=True):
     ''' Run benchmarks on AWS '''
+    # Hao: configed according to paper-results/main-graph/Autobahn/bench-0-4-1-True-200000-512.txt
     bench_params = {
         'faults': 0,
         'nodes': [4],
         'workers': 1,
         'co-locate': True,
-        'rate': [10_000],
+        'rate': [200_000],
         'tx_size': 512,
-        'duration': 20,
+        'duration': 50,
         'runs': 1,
 
         # Unused
@@ -140,7 +141,7 @@ def remote(ctx, debug=True):
         'max_header_delay': 200,  # ms
         'gc_depth': 50,  # rounds
         'sync_retry_delay': 1_000,  # ms
-        'sync_retry_nodes': 4,  # number of nodes
+        'sync_retry_nodes': 3,  # number of nodes
         'batch_size': 500_000,  # bytes
         'max_batch_delay': 200,  # ms
         'use_optimistic_tips': False,
@@ -154,10 +155,10 @@ def remote(ctx, debug=True):
         'simulate_asynchrony': True,
         'asynchrony_type': [3],
 
-        'asynchrony_start': [10_000], #ms
-        'asynchrony_duration': [20_000], #ms
-        'affected_nodes': [2],
-        'egress_penalty': 50, #ms
+        'asynchrony_start': [0], #ms
+        'asynchrony_duration': [0], #ms
+        'affected_nodes': [0],
+        'egress_penalty': 0, #ms
 
         'use_fast_sync': True,
         'use_exponential_timeouts': True,

@@ -37,13 +37,11 @@ class InstanceManager:
         # 'terminated', 'stopping', and 'stopped'.
         ids, ips = defaultdict(list), defaultdict(list)
         filter = ''
-
         for status in state:
             filter = 'status eq "' + status + '"'
             request = compute_v1.AggregatedListInstancesRequest(filter=filter)
             request.project = self.settings.project_id
             agg_list = self.client.aggregated_list(request=request)
-
             for zone, response in agg_list:
                 # Removes the zones/ prefix from the zone name
                 zone = zone[6:]
@@ -51,7 +49,10 @@ class InstanceManager:
                     if instance.name == 'autobahn-instance-template':
                         continue
                     ids[zone] += [instance.name]
-                    ips[zone] += [instance.network_interfaces[0].network_i_p]
+                    # Hao: seems like autobunh uses cloud instance so it accesses internal ip
+                    #ips[zone] += [instance.network_interfaces[0].network_i_p]
+                    ips[zone] += [instance.network_interfaces[0].access_configs[0].nat_i_p]
+
         return ids, ips
 
 

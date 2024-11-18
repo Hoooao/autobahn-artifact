@@ -77,7 +77,9 @@ class Bench:
         print(hosts)
         try:
             g = Group(*hosts, user=self.settings.username, connect_kwargs=self.connect)
-            g.run(' && '.join(cmd), hide=True)
+            print("aa")
+            # print with info
+            g.run(' && '.join(cmd))
             Print.heading(f'Initialized testbed of {len(hosts)} nodes')
         except (GroupException, ExecutionError) as e:
             e = FabricError(e) if isinstance(e, GroupException) else e
@@ -194,7 +196,7 @@ class Bench:
             )
         ]
         g = Group(*ips, user=self.settings.username, connect_kwargs=self.connect)
-        g.run(' && '.join(cmd), hide=True)
+        g.run(' && '.join(cmd))
 
     def _config(self, hosts, node_parameters, bench_parameters):
         Print.info('Generating configuration files...')
