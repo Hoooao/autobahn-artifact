@@ -60,8 +60,6 @@ class Bench:
             # The following dependencies prevent the error: [error: linker `cc` not found].
             'sudo apt-get -y install build-essential',
             'sudo apt-get -y install cmake',
-            'sudo apt-get -y install git',
-            'sudo apt-get -y install tmux',
 
             # Install rust (non-interactive).
             'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y',
@@ -75,9 +73,10 @@ class Bench:
             f'(git clone {self.settings.repo_url} || (cd {self.settings.repo_name} ; git pull))'
         ]
         hosts = self.manager.hosts(flat=True)
+        print(hosts)
         try:
             g = Group(*hosts, user=self.settings.username, connect_kwargs=self.connect)
-            g.run(' && '.join(cmd), hide=True)
+            g.run(' && '.join(cmd))
             Print.heading(f'Initialized testbed of {len(hosts)} nodes')
         except (GroupException, ExecutionError) as e:
             e = FabricError(e) if isinstance(e, GroupException) else e
@@ -91,7 +90,7 @@ class Bench:
         cmd = [delete_logs, f'({CommandMaker.kill()} || true)']
         try:
             g = Group(*hosts, user=self.settings.username, connect_kwargs=self.connect)
-            g.run(' && '.join(cmd), hide=True)
+            g.run(' && '.join(cmd))
         except GroupException as e:
             raise BenchError('Failed to kill nodes', FabricError(e))
 
@@ -112,7 +111,7 @@ class Bench:
         name = splitext(basename(log_file))[0]
         cmd = f'tmux new -d -s "{name}" "{command} |& tee {log_file}"'
         c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
-        output = c.run(cmd, hide=True)
+        output = c.run(cmd)
         self._check_stderr(output)
 
     def _update(self, hosts):
@@ -130,7 +129,7 @@ class Bench:
             )
         ]
         g = Group(*hosts, user=self.settings.username, connect_kwargs=self.connect)
-        g.run(' && '.join(cmd), hide=True)
+        g.run(' && '.join(cmd))
 
     def _config(self, hosts, node_parameters):
         Print.info('Generating configuration files...')
@@ -141,9 +140,9 @@ class Bench:
 
         # Recompile the latest code.
         cmd = CommandMaker.compile().split()
-        subprocess.run(cmd, check=True, cwd=PathMaker.node_crate_path())
-
+        subprocess.run(cmd, check=True, cwd=PathMaker.node_crate_path(),text=True,capture_output=True)
         # Create alias for the client and nodes binary.
+        
         cmd = CommandMaker.alias_binaries(PathMaker.binary_path())
         subprocess.run([cmd], shell=True)
 
@@ -154,6 +153,7 @@ class Bench:
             cmd = CommandMaker.generate_key(filename).split()
             subprocess.run(cmd, check=True)
             keys += [Key.from_file(filename)]
+        Print.info('4')
 
         names = [x.name for x in keys]
         consensus_addr = [f'{x}:{self.settings.consensus_port}' for x in hosts]
@@ -167,7 +167,7 @@ class Bench:
         # Cleanup all nodes.
         cmd = f'{CommandMaker.cleanup()} || true'
         g = Group(*hosts, user=self.settings.username, connect_kwargs=self.connect)
-        g.run(cmd, hide=True)
+        g.run(cmd)
 
         # Upload configuration files.
         progress = progress_bar(hosts, prefix='Uploading config files:')
@@ -190,21 +190,22 @@ class Bench:
         # for the faulty nodes to be online).
         committee = Committee.load(PathMaker.committee_file())
         addresses = [f'{x}:{self.settings.front_port}' for x in hosts]
-        rate_share = ceil(rate / committee.size())  # Take faults into account.
+        rate_share = ceil(rate / committee.size())  # Take faults into run_clientaccount.
         timeout = node_parameters.timeout_delay
         client_logs = [PathMaker.client_log_file(i) for i in range(len(hosts))]
-        for host, addr, log_file in zip(hosts, addresses, client_logs):
+        key_files = [PathMaker.key_file(i) for i in range(len(hosts))]
+        for host, addr, log_file, key_file in zip(hosts, addresses, client_logs, key_files):
             cmd = CommandMaker.run_client(
                 addr,
                 bench_parameters.tx_size,
                 rate_share,
                 timeout,
+                key_file,
                 nodes=addresses
             )
             self._background_run(host, cmd, log_file)
 
         # Run the nodes.
-        key_files = [PathMaker.key_file(i) for i in range(len(hosts))]
         dbs = [PathMaker.db_path(i) for i in range(len(hosts))]
         node_logs = [PathMaker.node_log_file(i) for i in range(len(hosts))]
         for host, key_file, db, log_file in zip(hosts, key_files, dbs, node_logs):
@@ -227,7 +228,7 @@ class Bench:
             sleep(ceil(duration / 20))
         self.kill(hosts=hosts, delete_logs=False)
 
-    def _logs(self, hosts, faults):
+    def _logs(self, hosts, faults, tx_size=0):
         # Delete local logs (if any).
         cmd = CommandMaker.clean_logs()
         subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
@@ -243,7 +244,7 @@ class Bench:
 
         # Parse logs and return the parser.
         Print.info('Parsing logs and computing performance...')
-        return LogParser.process(PathMaker.logs_path(), faults=faults)
+        return LogParser.process(PathMaker.logs_path(), faults=faults, tx_size=tx_size)
 
     def run(self, bench_parameters_dict, node_parameters_dict, debug=False):
         assert isinstance(debug, bool)
@@ -256,6 +257,7 @@ class Bench:
 
         # Select which hosts to use.
         selected_hosts = self._select_hosts(bench_parameters)
+        print(selected_hosts)
         if not selected_hosts:
             Print.warn('There are not enough instances available')
             return
@@ -292,7 +294,7 @@ class Bench:
                         self._run_single(
                             hosts, r, bench_parameters, node_parameters, debug
                         )
-                        self._logs(hosts, faults).print(PathMaker.result_file(
+                        self._logs(hosts, faults, bench_parameters.tx_size).print(PathMaker.result_file(
                             n, r, bench_parameters.tx_size, faults
                         ))
                     except (subprocess.SubprocessError, GroupException, ParseError) as e:
