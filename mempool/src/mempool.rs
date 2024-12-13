@@ -55,7 +55,7 @@ impl Mempool {
             x
         })?;
 
-        let front = Front::new(address, tx_client);
+        let front = Front::new(address, tx_client, name);
         tokio::spawn(async move {
             front.run().await;
         });

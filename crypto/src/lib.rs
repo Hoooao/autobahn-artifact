@@ -1,6 +1,10 @@
+use ed25519_dalek::Sha512;
+use ed25519_dalek::Digest as _;
+
 use ed25519_dalek as dalek;
 use ed25519_dalek::ed25519;
 use ed25519_dalek::Signer as _;
+
 use rand::rngs::OsRng;
 use rand::{CryptoRng, RngCore};
 use serde::{de, ser, Deserialize, Serialize};
@@ -56,6 +60,12 @@ impl TryFrom<&[u8]> for Digest {
 
 pub trait Hash {
     fn digest(&self) -> Digest;
+}
+
+impl Hash for &[u8] {
+    fn digest(&self) -> Digest {
+        Digest(Sha512::digest(self).as_slice()[..32].try_into().unwrap())
+    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Default)]
@@ -178,7 +188,7 @@ impl Signature {
         Signature { part1, part2 }
     }
 
-    fn flatten(&self) -> [u8; 64] {
+    pub fn flatten(&self) -> [u8; 64] {
         [self.part1, self.part2]
             .concat()
             .try_into()

@@ -1,30 +1,13 @@
 use crate::config::Export as _;
 use crate::config::{Committee, Parameters, Secret};
-use consensus::{Block, Consensus, ConsensusError};
+use consensus::{Block, Consensus};
 use crypto::SignatureService;
 use log::info;
-use mempool::{Mempool, MempoolError};
-use store::{Store, StoreError};
-use thiserror::Error;
+use mempool::Mempool;
+use store::Store;
 use tokio::sync::mpsc::{channel, Receiver};
 
-#[derive(Error, Debug)]
-pub enum NodeError {
-    #[error("Failed to read config file '{file}': {message}")]
-    ReadError { file: String, message: String },
-
-    #[error("Failed to write config file '{file}': {message}")]
-    WriteError { file: String, message: String },
-
-    #[error("Store error: {0}")]
-    StoreError(#[from] StoreError),
-
-    #[error(transparent)]
-    ConsensusError(#[from] ConsensusError),
-
-    #[error(transparent)]
-    MempoolError(#[from] MempoolError),
-}
+use crate::config::NodeError;
 
 pub struct Node {
     pub commit: Receiver<Block>,
@@ -40,6 +23,8 @@ impl Node {
         let (tx_commit, rx_commit) = channel(1000);
         let (tx_consensus, rx_consensus) = channel(1000);
         let (tx_consensus_mempool, rx_consensus_mempool) = channel(1000);
+
+        info!("Key file provided: {}", key_file);
 
         // Read the committee and secret key from file.
         let committee = Committee::read(committee_file)?;

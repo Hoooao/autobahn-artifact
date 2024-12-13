@@ -1,6 +1,6 @@
-use crate::node::NodeError;
 use consensus::{Committee as ConsensusCommittee, Parameters as ConsensusParameters};
 use crypto::{generate_keypair, generate_production_keypair, PublicKey, SecretKey};
+use log::info;
 use mempool::{Committee as MempoolCommittee, Parameters as MempoolParameters};
 use rand::rngs::StdRng;
 use rand::SeedableRng as _;
@@ -10,8 +10,34 @@ use std::fs::{self, OpenOptions};
 use std::io::BufWriter;
 use std::io::Write as _;
 
+// ==================== Moved from node.rs so client can compile with these ====================
+use thiserror::Error;
+use mempool::{MempoolError};
+use store::{StoreError};
+use consensus::{ConsensusError};
+
+#[derive(Error, Debug)]
+pub enum NodeError {
+    #[error("Failed to read config file '{file}': {message}")]
+    ReadError { file: String, message: String },
+
+    #[error("Failed to write config file '{file}': {message}")]
+    WriteError { file: String, message: String },
+
+    #[error("Store error: {0}")]
+    StoreError(#[from] StoreError),
+
+    #[error(transparent)]
+    ConsensusError(#[from] ConsensusError),
+
+    #[error(transparent)]
+    MempoolError(#[from] MempoolError),
+}
+
+
 pub trait Export: Serialize + DeserializeOwned {
     fn read(path: &str) -> Result<Self, NodeError> {
+        info!("{path}");
         let reader = || -> Result<Self, std::io::Error> {
             let data = fs::read(path)?;
             Ok(serde_json::from_slice(data.as_slice())?)
