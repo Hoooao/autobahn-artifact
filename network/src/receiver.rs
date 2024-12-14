@@ -9,6 +9,8 @@ use std::error::Error;
 use std::net::SocketAddr;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use crypto::{Hash, PublicKey, Signature, SignatureService};
+use ed25519_dalek::ed25519;
 
 #[cfg(test)]
 #[path = "tests/receiver_tests.rs"]
@@ -33,13 +35,14 @@ pub struct Receiver<Handler: MessageHandler> {
     address: SocketAddr,
     /// Struct responsible to define how to handle received messages.
     handler: Handler,
+    client_pub_key: PublicKey,
 }
 
 impl<Handler: MessageHandler> Receiver<Handler> {
     /// Spawn a new network receiver handling connections from any incoming peer.
-    pub fn spawn(address: SocketAddr, handler: Handler) {
+    pub fn spawn(address: SocketAddr, handler: Handler, client_pub_key: PublicKey) {
         tokio::spawn(async move {
-            Self { address, handler }.run().await;
+            Self { address, handler, client_pub_key}.run().await;
         });
     }
 
@@ -59,23 +62,40 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                 }
             };
             info!("Incoming connection established with {}", peer);
-            Self::spawn_runner(socket, peer, self.handler.clone()).await;
+            Self::spawn_runner(socket, peer, self.client_pub_key.clone(),self.handler.clone()).await;
         }
     }
 
     /// Spawn a new runner to handle a specific TCP connection. It receives messages and process them
     /// using the provided handler.
-    async fn spawn_runner(socket: TcpStream, peer: SocketAddr, handler: Handler) {
+    async fn spawn_runner(socket: TcpStream, peer: SocketAddr, pub_key: PublicKey, handler: Handler) {
         tokio::spawn(async move {
             let transport = Framed::new(socket, LengthDelimitedCodec::new());
             let (mut writer, mut reader) = transport.split();
             debug!("network: peer address receive: {}", peer);
             while let Some(frame) = reader.next().await {
                 match frame.map_err(|e| NetworkError::FailedToReceiveMessage(peer, e)) {
-                    Ok(message) => {
-                        if let Err(e) = handler.dispatch(&mut writer, message.freeze()).await {
-                            warn!("{}", e);
-                            return;
+                    Ok(x) => {
+                        // Verify client signature here
+                        let (msg, sig) = x.split_at(x.len() - 64); 
+                        
+                        let digest = msg.digest();
+
+                        let signature = ed25519::signature::Signature::from_bytes(sig).expect("Failed to create sig");
+                        let key = ed25519_dalek::PublicKey::from_bytes(&pub_key.0).expect("Failed to load pub key");
+                        
+                        match key.verify_strict(&digest.0, &signature) {
+                            Ok(()) => {
+                                debug!("Transaction from {} verified", peer);
+                                if let Err(e) = handler.dispatch(&mut writer, message.freeze()).await {
+                                    warn!("{}", e);
+                                    return;
+                                }
+                            }
+                            Err(er) => {
+                                debug!("Failed to verify client transaction {}", er);
+                                return;
+                            }
                         }
                     }
                     Err(e) => {

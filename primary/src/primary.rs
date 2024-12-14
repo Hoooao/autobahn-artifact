@@ -101,6 +101,7 @@ impl Primary {
                 tx_primary_messages,
                 tx_cert_requests,
             },
+            name,
         );
         info!(
             "Primary {} listening to primary messages on {}",
@@ -120,6 +121,7 @@ impl Primary {
                 tx_our_digests,
                 tx_others_digests,
             },
+            name,
         );
         info!(
             "Primary {} listening to workers messages on {}",

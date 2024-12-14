@@ -71,7 +71,7 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     let committee_file = matches.value_of("committee").unwrap();
     let parameters_file = matches.value_of("parameters");
     let store_path = matches.value_of("store").unwrap();
-
+    info!("Key file provided: {}", key_file);
     // Read the committee and node's keypair from file.
     let keypair = KeyPair::import(key_file).context("Failed to load the node's keypair")?;
     let committee =

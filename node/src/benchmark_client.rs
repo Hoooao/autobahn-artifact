@@ -13,6 +13,14 @@ use tokio::net::TcpStream;
 use tokio::time::{interval, sleep, Duration, Instant};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
+mod config;
+
+use crypto::SignatureService;
+use crate::config::Export as _;
+
+use crate::config::Secret;
+use crypto::Hash;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let matches = App::new(crate_name!())
@@ -23,6 +31,7 @@ async fn main() -> Result<()> {
         .args_from_usage("--rate=<INT> 'The rate (txs/s) at which to send the transactions'")
         .args_from_usage("--nodes=[ADDR]... 'Network addresses that must be reachable before starting the benchmark.'")
         .setting(AppSettings::ArgRequiredElseHelp)
+        .args_from_usage("--keys=<FILE> 'The file containing the key information for the benchmark.'")
         .get_matches();
 
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
@@ -52,6 +61,8 @@ async fn main() -> Result<()> {
         .collect::<Result<Vec<_>, _>>()
         .context("Invalid socket address format")?;
 
+    let key_file = matches.value_of("keys").unwrap();
+
     info!("Node address: {}", target);
 
     // NOTE: This log entry is used to compute performance.
@@ -60,11 +71,20 @@ async fn main() -> Result<()> {
     // NOTE: This log entry is used to compute performance.
     info!("Transactions rate: {} tx/s", rate);
 
+    info!("Key file provided: {}", key_file);
+    let secret = Secret::read(key_file)?;
+    let name = secret.name;
+    let secret_key = secret.secret;
+
+    // Make the data store.
+    let signature_service = SignatureService::new(secret_key);
+
     let client = Client {
         target,
         size,
         rate,
         nodes,
+        signature_service,
     };
 
     // Wait for all nodes to be online and synchronized.
@@ -79,10 +99,20 @@ struct Client {
     size: usize,
     rate: u64,
     nodes: Vec<SocketAddr>,
+    // ========= Added for Evaluation purposes ========= 
+    signature_service: SignatureService,
 }
 
 impl Client {
-    pub async fn send(&self) -> Result<()> {
+    async fn sign(&mut self, tx: &BytesMut) -> [u8; 64]
+    {
+        let digest = tx.as_ref().digest();
+        let signature = self.signature_service.request_signature(digest).await;
+        signature.flatten()
+        debug!("Signature added to tx");
+    }
+
+    pub async fn send(&mut self) -> Result<()> {
         const PRECISION: u64 = 20; // Sample precision.
         const BURST_DURATION: u64 = 1000 / PRECISION;
 
@@ -100,7 +130,7 @@ impl Client {
 
         // Submit all transactions.
         let burst = self.rate / PRECISION;
-        let mut tx = BytesMut::with_capacity(self.size);
+        let mut tx = BytesMut::with_capacity(self.size+ 64); // + 64 for signatures
         let mut counter = 0;
         let mut r = rand::thread_rng().gen();
         let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
@@ -126,6 +156,10 @@ impl Client {
                     tx.put_u8(1u8); // Standard txs start with 1.
                     tx.put_u64(r); // Ensures all clients send different txs.
                 };
+                // Eval sig
+                for b in self.sign(&tx).await {
+                    tx.put_u8(b);
+                }
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
