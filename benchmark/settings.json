@@ -12,7 +12,7 @@
     "repo": {
         "name": "autobahn-artifact",
         "url": "https://github.com/neilgiri/autobahn-artifact.git",
-        "branch": "vanilla-hs-blips"
+        "branch": "vanilla-hs-blips-non-cliauth"
     },
     "project_id": "mythic-veld-419517",
     "username": "hao",
