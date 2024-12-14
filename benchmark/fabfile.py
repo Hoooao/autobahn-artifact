@@ -106,11 +106,12 @@ def remote(ctx):
     bench_params = {
         'nodes': [4],
         # , 10_000, 15_000, 20_000
-        'rate': [5_000],
+        'rate': [15_000, 10_000, 20_000,3_000,30_000,50_000,7_500, 100_000, 
+           150_000,200_000, 300_000, 500_000, 1_000_000, 400_000, 750_000],
         # Hao: 9 is the minimal 
-        'tx_size': 9,
+        'tx_size': 512,
         'faults': 0,
-        'duration': 25,
+        'duration': 30,
         'runs': 1,
     }
     node_params = {
@@ -143,7 +144,7 @@ def plot(ctx):
         'nodes': [4],
         'tx_size': 512,
         'faults': [0],
-        'max_latency': [2_000, 5_000]
+        'max_latency': [1_050_000]
     }
     try:
         Ploter.plot(plot_params)

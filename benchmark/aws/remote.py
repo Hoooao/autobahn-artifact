@@ -129,6 +129,7 @@ class Bench:
             )
         ]
         g = Group(*hosts, user=self.settings.username, connect_kwargs=self.connect)
+        print(' && '.join(cmd))
         g.run(' && '.join(cmd))
 
     def _config(self, hosts, node_parameters):
