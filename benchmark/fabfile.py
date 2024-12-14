@@ -16,8 +16,10 @@ def local(ctx):
         'rate': [15_000],
         'tx_size': 512,
         'faults': 0,
-        'duration': 60,
+        'workers': 1,
+        'duration': 8,
         'runs': 1,
+        'co-locate': True,
     }
     node_params = {
         'consensus': {
@@ -103,17 +105,20 @@ def install(ctx):
 
 @task
 def remote(ctx):
-    ''' Run benchmarks on AWS '''
+    ''' Run benchmarks on GCP '''
     bench_params = {
         'nodes': [4],
+        # Hao: seems only autobahn and bullshark uses it, but I add it for collocate 
+        'workers': 1,
         # ran: 12_500, 15_000, 10_000, 20_000,3_000,30_000,5_000,50_000,7_500, 100_000, 150_000,200_000, 300_000, 500_000, 1_000_000; 
         # to be ran:
-        'rate': [400_000, 750_000],
+        'rate': [5_000],
         # Hao: 9 is the minimal 
         'tx_size': 9,
         'faults': 0,
-        'duration': 60,
-        'runs': 2,
+        'duration': 40,
+        'runs': 1,
+        'co-locate': True,
     }
     node_params = {
         'consensus': {
@@ -149,7 +154,8 @@ def plot(ctx):
         'nodes': [4],
         'tx_size': 9,
         'faults': [0],
-        'max_latency': [2_000, 5_000]
+        'max_latency': [2_000, 5_000],
+        'collocate': True,
     }
     try:
         Ploter.plot(plot_params)

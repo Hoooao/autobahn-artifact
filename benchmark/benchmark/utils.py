@@ -30,7 +30,12 @@ class PathMaker:
     def key_file(i):
         assert isinstance(i, int) and i >= 0
         return f'.node-{i}.json'
-
+    
+    @staticmethod
+    def ckey_file(i):
+        assert isinstance(i, int) and i >= 0
+        return f'.client-{i}.json'
+    
     @staticmethod
     def db_path(i):
         assert isinstance(i, int) and i >= 0
@@ -55,14 +60,14 @@ class PathMaker:
         return 'results'
 
     @staticmethod
-    def result_file(nodes, rate, tx_size, faults):
+    def result_file(nodes, rate, tx_size, faults, collocate):
         return join(
-            PathMaker.results_path(), f'bench-{nodes}-{rate}-{tx_size}-{faults}.txt'
+            PathMaker.results_path(), f'bench-{nodes}-{rate}-{tx_size}-{faults}-{collocate}.txt'
         )
     @staticmethod
-    def latency_file(nodes, rate, tx_size, faults):
+    def latency_file(nodes, rate, tx_size, faults, collocate):
         return join(
-            PathMaker.results_path(), f'latency-{nodes}-{rate}-{tx_size}-{faults}.txt'
+            PathMaker.results_path(), f'latency-{nodes}-{rate}-{tx_size}-{faults}-{collocate}.txt'
         )
 
     @staticmethod

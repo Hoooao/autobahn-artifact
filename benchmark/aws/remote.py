@@ -95,18 +95,43 @@ class Bench:
         except GroupException as e:
             raise BenchError('Failed to kill nodes', FabricError(e))
 
+    # Hao: change here to update the collocate later..
+    #1. select instance name with cli or rep
+    #2. update the worker part as the original impl clusters workers and nodes in same zone?
     def _select_hosts(self, bench_parameters):
-        nodes = max(bench_parameters.nodes)
+        # Collocate the primary and its workers on the same machine.
+        if bench_parameters.collocate:
+            nodes = max(bench_parameters.nodes)
 
-        # Ensure there are enough hosts.
-        hosts = self.manager.hosts()
-        if sum(len(x) for x in hosts.values()) < nodes:
-            return []
+            # Ensure there are enough hosts.
+            hosts = self.manager.hosts()
+            if sum(len(x) for x in hosts.values()) < nodes:
+                return []
 
-        # Select the hosts in different data centers.
-        ordered = zip(*hosts.values())
-        ordered = [x for y in ordered for x in y]
-        return ordered[:nodes]
+            # Select the hosts in different data centers.
+            ordered = zip(*hosts.values())
+            ordered = [x for y in ordered for x in y]
+            return ordered[:nodes]
+
+        # Spawn the primary and each worker on a different machine. Each
+        # authority runs in a single data center.
+        else:
+            primaries = max(bench_parameters.nodes)
+
+            # Ensure there are enough hosts.
+            hosts = self.manager.hosts()
+            if len(hosts.keys()) < primaries:
+                return []
+            for ips in hosts.values():
+                if len(ips) < bench_parameters.workers + 1:
+                    return []
+
+            # Ensure the primary and its workers are in the same region.
+            selected = []
+            for region in list(hosts.keys())[:primaries]:
+                ips = list(hosts[region])[:bench_parameters.workers + 1]
+                selected.append(ips)
+            return selected
 
     def _background_run(self, host, command, log_file):
         name = splitext(basename(log_file))[0]
@@ -115,7 +140,11 @@ class Bench:
         output = c.run(cmd)
         self._check_stderr(output)
 
-    def _update(self, hosts):
+    def _update(self, hosts, collocate):
+        if collocate:
+            hosts = list(set(hosts))
+        else:
+            hosts = list(set([x for y in hosts for x in y]))
         Print.info(
             f'Updating {len(hosts)} nodes (branch "{self.settings.branch}")...'
         )
@@ -132,7 +161,7 @@ class Bench:
         g = Group(*hosts, user=self.settings.username, connect_kwargs=self.connect)
         g.run(' && '.join(cmd))
 
-    def _config(self, hosts, node_parameters):
+    def _config(self, hosts, node_parameters, bench_parameters):
         Print.info('Generating configuration files...')
 
         # Cleanup all local configuration files.
@@ -156,6 +185,16 @@ class Bench:
             keys += [Key.from_file(filename)]
 
         names = [x.name for x in keys]
+
+        if bench_parameters.collocate:
+            workers = bench_parameters.workers
+            addresses = OrderedDict(
+                (x, [y] * (workers + 1)) for x, y in zip(names, hosts)
+            )
+        else:
+            addresses = OrderedDict(
+                (x, y) for x, y in zip(names, hosts)
+            )
         consensus_addr = [f'{x}:{self.settings.consensus_port}' for x in hosts]
         front_addr = [f'{x}:{self.settings.front_port}' for x in hosts]
         mempool_addr = [f'{x}:{self.settings.mempool_port}' for x in hosts]
@@ -179,6 +218,7 @@ class Bench:
 
         return committee
 
+    # hao: change here to add collocate
     def _run_single(self, hosts, rate, bench_parameters, node_parameters, debug=False):
         Print.info('Booting testbed...')
 
@@ -193,12 +233,15 @@ class Bench:
         rate_share = ceil(rate / committee.size())  # Take faults into account.
         timeout = node_parameters.timeout_delay
         client_logs = [PathMaker.client_log_file(i) for i in range(len(hosts))]
-        for host, addr, log_file in zip(hosts, addresses, client_logs):
+        # hao" use node's key for cli as well... 
+        key_files = [PathMaker.key_file(i) for i in range(len(hosts))]
+        for host, addr, log_file, key_file in zip(hosts, addresses, client_logs, key_files):
             cmd = CommandMaker.run_client(
                 addr,
                 bench_parameters.tx_size,
                 rate_share,
                 timeout,
+                key_file,
                 nodes=addresses
             )
             self._background_run(host, cmd, log_file)
@@ -227,7 +270,7 @@ class Bench:
             sleep(ceil(duration / 20))
         self.kill(hosts=hosts, delete_logs=False)
 
-    def _logs(self, hosts, faults, tx_size=0):
+    def _logs(self, hosts, faults, tx_size=0, collocate=False):
         # Delete local logs (if any).
         cmd = CommandMaker.clean_logs()
         subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
@@ -243,7 +286,7 @@ class Bench:
 
         # Parse logs and return the parser.
         Print.info('Parsing logs and computing performance...')
-        return LogParser.process(PathMaker.logs_path(), faults=faults, tx_size=tx_size)
+        return LogParser.process(PathMaker.logs_path(), faults=faults, tx_size=tx_size, collocate=collocate)
 
     def run(self, bench_parameters_dict, node_parameters_dict, debug=False):
         assert isinstance(debug, bool)
@@ -259,10 +302,10 @@ class Bench:
         if not selected_hosts:
             Print.warn('There are not enough instances available')
             return
-
+        print(selected_hosts)
         # Update nodes.
         try:
-            self._update(selected_hosts)
+            self._update(selected_hosts, bench_parameters.collocate)
         except (GroupException, ExecutionError) as e:
             e = FabricError(e) if isinstance(e, GroupException) else e
             raise BenchError('Failed to update nodes', e)
@@ -275,7 +318,7 @@ class Bench:
 
                 # Upload all configuration files.
                 try:
-                    self._config(hosts, node_parameters)
+                    self._config(hosts, node_parameters, bench_parameters)
                 except (subprocess.SubprocessError, GroupException) as e:
                     e = FabricError(e) if isinstance(e, GroupException) else e
                     Print.error(BenchError('Failed to configure nodes', e))
@@ -292,8 +335,8 @@ class Bench:
                         self._run_single(
                             hosts, r, bench_parameters, node_parameters, debug
                         )
-                        self._logs(hosts, faults, bench_parameters.tx_size).print(PathMaker.result_file(
-                            n, r, bench_parameters.tx_size, faults
+                        self._logs(hosts, faults, bench_parameters.tx_size, bench_parameters.collocate).print(PathMaker.result_file(
+                            n, r, bench_parameters.tx_size, faults,bench_parameters.collocate
                         ))
                     except (subprocess.SubprocessError, GroupException, ParseError) as e:
                         self.kill(hosts=hosts)
