@@ -13,13 +13,14 @@ class ParseError(Exception):
 
 
 class LogParser:
-    def __init__(self, clients, nodes, tx_size=512, faults=0):
+    def __init__(self, clients, nodes, tx_size=512, faults=0, collocate=False):
         inputs = [clients, nodes]
         assert all(isinstance(x, list) for x in inputs)
         assert all(isinstance(x, str) for y in inputs for x in y)
         assert all(x for x in inputs)
 
         self.faults = faults
+        self.collocate = collocate
         self.committee_size = len(nodes) + faults
         self.nodes = len(nodes)
         self.tx_size = tx_size
@@ -72,7 +73,6 @@ class LogParser:
     def _parse_clients(self, log):
         if search(r'Error', log) is not None:
             raise ParseError('Client(s) panicked')
-
         size = int(search(r'Transactions size: (\d+)', log).group(1))
         rate = int(search(r'Transactions rate: (\d+)', log).group(1))
 
@@ -175,7 +175,7 @@ class LogParser:
                     list_latencies += [(start-first_start, end-first_start, end-start)]
 
         list_latencies.sort(key=lambda tup: tup[0])
-        with open(PathMaker.latency_file(self.nodes, sum(self.rate), self.tx_size, self.faults), 'w') as f:
+        with open(PathMaker.latency_file(self.nodes, sum(self.rate), self.tx_size, self.faults, self.collocate), 'w') as f:
             for line in list_latencies:
                 f.write(str(line[0]) + ',' + str(line[1]) + ',' + str((line[2])) + '\n')
         return mean(latency) if latency else 0
@@ -225,7 +225,7 @@ class LogParser:
             f.write(self.result())
 
     @classmethod
-    def process(cls, directory, faults=0, tx_size=512):
+    def process(cls, directory, faults=0, tx_size=512, collocate=False):
         assert isinstance(directory, str)
 
         clients = []
@@ -237,4 +237,4 @@ class LogParser:
             with open(filename, 'r') as f:
                 nodes += [f.read()]
 
-        return cls(clients, nodes,tx_size,faults=faults)
+        return cls(clients, nodes,tx_size,faults=faults, collocate=collocate)
