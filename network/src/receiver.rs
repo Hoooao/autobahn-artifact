@@ -87,7 +87,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                         match key.verify_strict(&digest.0, &signature) {
                             Ok(()) => {
                                 debug!("Transaction from {} verified", peer);
-                                if let Err(e) = handler.dispatch(&mut writer, message.freeze()).await {
+                                if let Err(e) = handler.dispatch(&mut writer, x.freeze()).await {
                                     warn!("{}", e);
                                     return;
                                 }

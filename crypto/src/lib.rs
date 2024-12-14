@@ -1,6 +1,5 @@
 use ed25519_dalek::Sha512;
 use ed25519_dalek::Digest as _;
-use crypto::{Hash, PublicKey, Signature, SignatureService};
 
 use ed25519_dalek as dalek;
 use ed25519_dalek::ed25519;

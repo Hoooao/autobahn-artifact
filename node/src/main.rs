@@ -10,6 +10,7 @@ use primary::{Certificate, Primary};
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver};
 use worker::Worker;
+use log::info;
 
 /// The default channel capacity.
 pub const CHANNEL_CAPACITY: usize = 1_000;

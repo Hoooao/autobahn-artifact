@@ -115,7 +115,7 @@ impl Worker {
             address,
             /* handler */
             PrimaryReceiverHandler { tx_synchronizer },
-            name,
+            self.name,
         );
 
         // The `Synchronizer` is responsible to keep the worker in sync with the others. It handles the commands
@@ -153,7 +153,7 @@ impl Worker {
         Receiver::spawn(
             address,
             /* handler */ TxReceiverHandler { tx_batch_maker },
-            name,
+            self.name,
         );
 
         /*let mut keys: Vec<_> = self.committee.authorities.keys().cloned().collect();
@@ -252,7 +252,7 @@ impl Worker {
                 tx_helper,
                 tx_processor,
             },
-            name,
+            self.name,
         );
 
         // The `Helper` is dedicated to reply to batch requests from other workers.
