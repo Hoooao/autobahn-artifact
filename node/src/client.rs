@@ -121,9 +121,9 @@ impl Client {
         const BURST_DURATION: u64 = 1000 / PRECISION;
 
         // The transaction size must be at least 16 bytes to ensure all txs are different.
-        if self.size < 16 {
+        if self.size < 9 {
             return Err(anyhow::Error::msg(
-                "Transaction size must be at least 16 bytes",
+                "Transaction size must be at least 9 bytes",
             ));
         }
 

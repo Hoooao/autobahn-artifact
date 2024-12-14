@@ -5,6 +5,8 @@ use std::net::SocketAddr;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::Sender;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use crypto::{Hash, PublicKey, Signature, SignatureService};
+use ed25519_dalek::ed25519;
 
 pub struct Front {
     address: SocketAddr,
