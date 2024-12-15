@@ -7,6 +7,7 @@ use tokio::sync::mpsc::Sender;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use crypto::{Hash, PublicKey, Signature, SignatureService};
 use ed25519_dalek::ed25519;
+use std::time::Instant;
 
 pub struct Front {
     address: SocketAddr,
@@ -54,10 +55,11 @@ impl Front {
 
                         let signature = ed25519::signature::Signature::from_bytes(sig).expect("Failed to create sig");
                         let key = ed25519_dalek::PublicKey::from_bytes(&pub_key.0).expect("Failed to load pub key");
-                        
+                        let start = Instant::now();
                         match key.verify_strict(&digest.0, &signature) {
                             Ok(()) => {
-                                debug!("Client transaction verified");
+                                debug!("Client transaction verified, take taken: {:?}", start.elapsed());
+
                                 deliver.send(msg.to_vec()).await.expect("Core channel closed");
                             }
                             Err(e) => {
