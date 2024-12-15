@@ -116,22 +116,20 @@ class Bench:
         # Spawn the primary and each worker on a different machine. Each
         # authority runs in a single data center.
         else:
-            primaries = max(bench_parameters.nodes)
+            nodes = max(bench_parameters.nodes)
 
             # Ensure there are enough hosts.
-            hosts = self.manager.hosts()
-            if len(hosts.keys()) < primaries:
+            hosts = self.manager.hosts(with_id=True)
+            if len(hosts.values()) < nodes*2:
                 return []
-            for ips in hosts.values():
-                if len(ips) < bench_parameters.workers + 1:
-                    return []
-
-            # Ensure the primary and its workers are in the same region.
-            selected = []
-            for region in list(hosts.keys())[:primaries]:
-                ips = list(hosts[region])[:bench_parameters.workers + 1]
-                selected.append(ips)
-            return selected
+            ordered = []
+            for k, v in hosts.items():
+                if "rep" in k:
+                    ordered.append(v)
+            for k, v in hosts.items():
+                if "cli" in k:
+                    ordered.append(v)
+            return ordered
 
     def _background_run(self, host, command, log_file):
         name = splitext(basename(log_file))[0]
@@ -140,11 +138,7 @@ class Bench:
         output = c.run(cmd)
         self._check_stderr(output)
 
-    def _update(self, hosts, collocate):
-        if collocate:
-            hosts = list(set(hosts))
-        else:
-            hosts = list(set([x for y in hosts for x in y]))
+    def _update(self, hosts):
         Print.info(
             f'Updating {len(hosts)} nodes (branch "{self.settings.branch}")...'
         )
@@ -161,9 +155,15 @@ class Bench:
         g = Group(*hosts, user=self.settings.username, connect_kwargs=self.connect)
         g.run(' && '.join(cmd))
 
-    def _config(self, hosts, node_parameters, bench_parameters):
+    def _config(self, hosts, node_parameters, collocate = True):
         Print.info('Generating configuration files...')
-
+        workers_hosts = []
+        if not collocate:
+            worker_num = int(len(hosts)/2)
+            workers_hosts = hosts[worker_num:]
+            hosts = hosts[:worker_num]
+            print("Workers hosts: ", workers_hosts)  
+            print("Node hosts: ", hosts)
         # Cleanup all local configuration files.
         cmd = CommandMaker.cleanup()
         subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
@@ -185,20 +185,11 @@ class Bench:
             keys += [Key.from_file(filename)]
 
         names = [x.name for x in keys]
-
-        if bench_parameters.collocate:
-            workers = bench_parameters.workers
-            addresses = OrderedDict(
-                (x, [y] * (workers + 1)) for x, y in zip(names, hosts)
-            )
-        else:
-            addresses = OrderedDict(
-                (x, y) for x, y in zip(names, hosts)
-            )
+            
         consensus_addr = [f'{x}:{self.settings.consensus_port}' for x in hosts]
         front_addr = [f'{x}:{self.settings.front_port}' for x in hosts]
         mempool_addr = [f'{x}:{self.settings.mempool_port}' for x in hosts]
-        committee = Committee(names, consensus_addr, front_addr, mempool_addr)
+        committee = Committee(names, consensus_addr, front_addr, mempool_addr, collocate, workers_hosts)
         committee.print(PathMaker.committee_file())
 
         node_parameters.print(PathMaker.parameters_file())
@@ -221,21 +212,28 @@ class Bench:
     # hao: change here to add collocate
     def _run_single(self, hosts, rate, bench_parameters, node_parameters, debug=False):
         Print.info('Booting testbed...')
-
+        workers_hosts = []
+        if not bench_parameters.collocate:
+            worker_num = int(len(hosts)/2)
+            workers_hosts = hosts[worker_num:]
+            hosts = hosts[:worker_num]
+        else:
+            workers_hosts = hosts
         # Kill any potentially unfinished run and delete logs.
         self.kill(hosts=hosts, delete_logs=True)
+        self.kill(hosts=workers_hosts, delete_logs=True)
 
         # Run the clients (they will wait for the nodes to be ready).
         # Filter all faulty nodes from the client addresses (or they will wait
         # for the faulty nodes to be online).
-        committee = Committee.load(PathMaker.committee_file())
+        committee = Committee.load(PathMaker.committee_file(), bench_parameters.collocate)
         addresses = [f'{x}:{self.settings.front_port}' for x in hosts]
         rate_share = ceil(rate / committee.size())  # Take faults into account.
         timeout = node_parameters.timeout_delay
-        client_logs = [PathMaker.client_log_file(i) for i in range(len(hosts))]
+        client_logs = [PathMaker.client_log_file(i) for i in range(len(workers_hosts))]
         # hao" use node's key for cli as well... 
-        key_files = [PathMaker.key_file(i) for i in range(len(hosts))]
-        for host, addr, log_file, key_file in zip(hosts, addresses, client_logs, key_files):
+        key_files = [PathMaker.key_file(i) for i in range(len(workers_hosts))]
+        for host, addr, log_file, key_file in zip(workers_hosts, addresses, client_logs, key_files):
             cmd = CommandMaker.run_client(
                 addr,
                 bench_parameters.tx_size,
@@ -277,12 +275,20 @@ class Bench:
 
         # Download log files.
         progress = progress_bar(hosts, prefix='Downloading logs:')
+        id_ip = self.manager.hosts(with_id=True)
         for i, host in enumerate(progress):
+            print("Host: ", host)
             c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
-            c.get(PathMaker.node_log_file(i), local=PathMaker.node_log_file(i))
-            c.get(
-                PathMaker.client_log_file(i), local=PathMaker.client_log_file(i)
-            )
+            for k, v in id_ip.items():
+                if host not in v:
+                    continue
+                if "cli" in k:
+                    c.get(PathMaker.client_log_file(i- int(len(hosts)/2)), local=PathMaker.client_log_file(i- int(len(hosts)/2)))
+                    break
+                else:
+                    c.get(PathMaker.node_log_file(i), local=PathMaker.node_log_file(i))
+                    break
+            
 
         # Parse logs and return the parser.
         Print.info('Parsing logs and computing performance...')
@@ -305,7 +311,7 @@ class Bench:
         print(selected_hosts)
         # Update nodes.
         try:
-            self._update(selected_hosts, bench_parameters.collocate)
+            self._update(selected_hosts)
         except (GroupException, ExecutionError) as e:
             e = FabricError(e) if isinstance(e, GroupException) else e
             raise BenchError('Failed to update nodes', e)
@@ -314,19 +320,20 @@ class Bench:
         for n in bench_parameters.nodes:
             for r in bench_parameters.rate:
                 Print.heading(f'\nRunning {n} nodes (input rate: {r:,} tx/s)')
-                hosts = selected_hosts[:n]
+                hosts = selected_hosts
 
                 # Upload all configuration files.
                 try:
-                    self._config(hosts, node_parameters, bench_parameters)
+                    self._config(hosts, node_parameters, bench_parameters.collocate)
                 except (subprocess.SubprocessError, GroupException) as e:
                     e = FabricError(e) if isinstance(e, GroupException) else e
                     Print.error(BenchError('Failed to configure nodes', e))
                     continue
 
                 # Do not boot faulty nodes.
+                # Hao: not sure this work..
                 faults = bench_parameters.faults
-                hosts = hosts[:n-faults]
+                hosts = hosts[:len(hosts)-faults]
 
                 # Run the benchmark.
                 for i in range(bench_parameters.runs):
