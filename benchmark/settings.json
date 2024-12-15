@@ -1,16 +1,16 @@
 {
     "key": {
         "name": "gcp",
-        "path": "<KEY_PATH>"
+        "path": "/home/hao/.ssh/bft-google-cloud-ssh"
     },
     "port": 5000,
     "repo": {
         "name": "autobahn-artifact",
-        "url": "https://github.com/neilgiri/autobahn-artifact.git",
+        "url": "https://github.com/Hoooao/autobahn-artifact.git",
         "branch": "bullshark-blips"
     },
-    "project_id": "<PROJECT_ID>",
-    "username": "<USERNAME>",
+    "project_id": "mythic-veld-419517",
+    "username": "hao",
     "instances": {
         "type": "t2d-standard-4",
         "regions": ["us-east1-b", "us-east5-a", "us-west1-b", "us-west4-a"],
