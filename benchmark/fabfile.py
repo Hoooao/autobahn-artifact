@@ -16,7 +16,6 @@ def local(ctx):
         'rate': [15_000],
         'tx_size': 512,
         'faults': 0,
-        'workers': 1,
         'duration': 8,
         'runs': 1,
         'co-locate': True,
@@ -108,17 +107,14 @@ def remote(ctx):
     ''' Run benchmarks on GCP '''
     bench_params = {
         'nodes': [4],
-        # Hao: seems only autobahn and bullshark uses it, but I add it for collocate 
-        'workers': 1,
-        # ran: 12_500, 15_000, 10_000, 20_000,3_000,30_000,5_000,50_000,7_500, 100_000, 150_000,200_000, 300_000, 500_000, 1_000_000; 
-        # to be ran:
-        'rate': [5_000],
+        # ran: 3_000, 5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000
+        'rate': [3_000],
         # Hao: 9 is the minimal 
-        'tx_size': 9,
+        'tx_size': 73, # 9 + 64 to mimic 64B signature
         'faults': 0,
-        'duration': 40,
+        'duration': 8,
         'runs': 1,
-        'co-locate': True,
+        'co-locate': False,
     }
     node_params = {
         'consensus': {
@@ -137,7 +133,7 @@ def remote(ctx):
         'mempool': {
             'queue_capacity': 10_000_000,
             'sync_retry_delay': 5_000,
-            'max_payload_size': 500_000,
+            'max_payload_size': 29_200,
             'min_block_delay': 0
         }
     }

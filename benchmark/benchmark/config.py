@@ -19,7 +19,7 @@ class Key:
 
 
 class Committee:
-    def __init__(self, names, consensus_addr, front_addr, mempool_addr):
+    def __init__(self, names, consensus_addr, front_addr, mempool_addr, collocate = False, workers_addr=None):
         inputs = [names, consensus_addr, front_addr, mempool_addr]
         assert all(isinstance(x, list) for x in inputs)
         assert all(isinstance(x, str) for y in inputs for x in y)
@@ -29,11 +29,14 @@ class Committee:
         self.consensus = consensus_addr
         self.front = front_addr
         self.mempool = mempool_addr
+        self.workers_addr = workers_addr
 
         self.json = {
             'consensus': self._build_consensus(),
-            'mempool': self._build_mempool()
+            'mempool': self._build_mempool(),
         }
+        if not collocate:
+            self.json['workers'] = self._build_workers()
 
     def _build_consensus(self):
         node = {}
@@ -46,7 +49,12 @@ class Committee:
         for n, f, m in zip(self.names, self.front, self.mempool):
             node[n] = {'name': n, 'front_address': f, 'mempool_address': m}
         return {'authorities': node, 'epoch': 1}
-
+    def _build_workers(self):
+        node = {}
+        for n, w in zip(self.names, self.workers_addr):
+            node[n] = {'name': n, 'workers_address': w}
+        return {'authorities': node, 'epoch': 1}
+    
     def print(self, filename):
         assert isinstance(filename, str)
         with open(filename, 'w') as f:
@@ -56,19 +64,23 @@ class Committee:
         return len(self.json['consensus']['authorities'])
 
     @classmethod
-    def load(cls, filename):
+    def load(cls, filename, collocate=False):
         assert isinstance(filename, str)
         with open(filename, 'r') as f:
             data = load(f)
 
         consensus_authorities = data['consensus']['authorities'].values()
         mempool_authorities = data['mempool']['authorities'].values()
+        workers_addr = None
+        if not collocate:
+            workers_authorities = data['workers']['authorities'].values()
+            workers_addr = [x['workers_address'] for x in workers_authorities]
 
         names = [x['name'] for x in consensus_authorities]
         consensus_addr = [x['address'] for x in consensus_authorities]
         front_addr = [x['front_address'] for x in mempool_authorities]
         mempool_addr = [x['mempool_address'] for x in mempool_authorities]
-        return cls(names, consensus_addr, front_addr, mempool_addr)
+        return cls(names, consensus_addr, front_addr, mempool_addr,collocate, workers_addr)
 
 
 class LocalCommittee(Committee):
@@ -129,7 +141,6 @@ class BenchParameters:
             self.duration = int(json['duration'])
             self.runs = int(json['runs']) if 'runs' in json else 1
             self.collocate = int(json['co-locate'])
-            self.workers = int(json['workers'])
         except KeyError as e:
             raise ConfigError(f'Malformed bench parameters: missing key {e}')
 

@@ -6,12 +6,13 @@
     "port": "5000",
     "ports": {
         "consensus": 8000,
+        "worker": 9000,
         "mempool": 7000,
         "front": 6000
     },
     "repo": {
         "name": "autobahn-artifact",
-        "url": "https://github.com/neilgiri/autobahn-artifact.git",
+        "url": "https://github.com/Hoooao/autobahn-artifact.git",
         "branch": "vanilla-hs-blips-non-cliauth"
     },
     "project_id": "mythic-veld-419517",
