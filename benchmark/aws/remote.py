@@ -189,7 +189,7 @@ class Bench:
         consensus_addr = [f'{x}:{self.settings.consensus_port}' for x in hosts]
         front_addr = [f'{x}:{self.settings.front_port}' for x in hosts]
         mempool_addr = [f'{x}:{self.settings.mempool_port}' for x in hosts]
-        committee = Committee(names, consensus_addr, front_addr, mempool_addr, collocate, workers_hosts)
+        committee = Committee(names, consensus_addr, front_addr, mempool_addr)
         committee.print(PathMaker.committee_file())
 
         node_parameters.print(PathMaker.parameters_file())
@@ -226,7 +226,7 @@ class Bench:
         # Run the clients (they will wait for the nodes to be ready).
         # Filter all faulty nodes from the client addresses (or they will wait
         # for the faulty nodes to be online).
-        committee = Committee.load(PathMaker.committee_file(), bench_parameters.collocate)
+        committee = Committee.load(PathMaker.committee_file())
         addresses = [f'{x}:{self.settings.front_port}' for x in hosts]
         rate_share = ceil(rate / committee.size())  # Take faults into account.
         timeout = node_parameters.timeout_delay
@@ -277,17 +277,20 @@ class Bench:
         progress = progress_bar(hosts, prefix='Downloading logs:')
         id_ip = self.manager.hosts(with_id=True)
         for i, host in enumerate(progress):
-            print("Host: ", host)
             c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
-            for k, v in id_ip.items():
-                if host not in v:
-                    continue
-                if "cli" in k:
-                    c.get(PathMaker.client_log_file(i- int(len(hosts)/2)), local=PathMaker.client_log_file(i- int(len(hosts)/2)))
-                    break
-                else:
-                    c.get(PathMaker.node_log_file(i), local=PathMaker.node_log_file(i))
-                    break
+            if not collocate:
+                for k, v in id_ip.items():
+                    if host not in v:
+                        continue
+                    if "cli" in k:
+                        c.get(PathMaker.client_log_file(i- int(len(hosts)/2)), local=PathMaker.client_log_file(i- int(len(hosts)/2)))
+                        break
+                    else:
+                        c.get(PathMaker.node_log_file(i), local=PathMaker.node_log_file(i))
+                        break
+            else:
+                c.get(PathMaker.node_log_file(i), local=PathMaker.node_log_file(i))
+                c.get(PathMaker.client_log_file(i), local=PathMaker.client_log_file(i))
             
 
         # Parse logs and return the parser.

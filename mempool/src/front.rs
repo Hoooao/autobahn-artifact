@@ -58,7 +58,7 @@ impl Front {
                         match key.verify_strict(&digest.0, &signature) {
                             Ok(()) => {
                                 debug!("Client transaction verified");
-                                deliver.send(x.to_vec()).await.expect("Core channel closed");
+                                deliver.send(msg.to_vec()).await.expect("Core channel closed");
                             }
                             Err(e) => {
                                 debug!("Failed to verify client transaction {}", e);
