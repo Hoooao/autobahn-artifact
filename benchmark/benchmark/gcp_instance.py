@@ -51,7 +51,10 @@ class InstanceManager:
                     if instance.name == 'autobahn-instance-template':
                         continue
                     ids[zone] += [instance.name]
-                    ips[zone] += [instance.network_interfaces[0].network_i_p]
+                    # Hao: seems like autobunh uses cloud instance so it accesses internal ip
+                    #ips[zone] += [instance.network_interfaces[0].network_i_p]
+                    ips[zone] += [instance.network_interfaces[0].access_configs[0].nat_i_p]
+
         return ids, ips
 
 
