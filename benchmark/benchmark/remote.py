@@ -113,23 +113,22 @@ class Bench:
         # Spawn the primary and each worker on a different machine. Each
         # authority runs in a single data center.
         else:
-            primaries = max(bench_parameters.nodes)
+            nodes = max(bench_parameters.nodes)
 
             # Ensure there are enough hosts.
-            hosts = self.manager.hosts()
-            if len(hosts.keys()) < primaries:
+            hosts = self.manager.hosts(with_id=True)
+            if len(hosts.values()) < nodes*2:
                 return []
-            for ips in hosts.values():
-                if len(ips) < bench_parameters.workers + 1:
-                    return []
+            ordered = []
+            for k, v in hosts.items():
+                if "rep" in k:
+                    ordered.append(v)
+            for k, v in hosts.items():
+                if "cli" in k:
+                    ordered.append(v)
+            return ordered
 
-            # Ensure the primary and its workers are in the same region.
-            selected = []
-            for region in list(hosts.keys())[:primaries]:
-                ips = list(hosts[region])[:bench_parameters.workers + 1]
-                selected.append(ips)
-            return selected
-
+    # Hao: not used?
     def _select_hosts_config(self, bench_parameters):
         # Collocate the primary and its workers on the same machine.
         if bench_parameters.collocate:
@@ -174,12 +173,7 @@ class Bench:
         output = c.run(cmd, hide=True)
         self._check_stderr(output)
 
-    def _update(self, hosts, collocate):
-        if collocate:
-            ips = list(set(hosts))
-        else:
-            ips = list(set([x for y in hosts for x in y]))
-
+    def _update(self, hosts):
         Print.info(
             f'Updating {len(ips)} machines (branch "{self.settings.branch}")...'
         )
@@ -198,7 +192,14 @@ class Bench:
 
     def _config(self, hosts, node_parameters, bench_parameters):
         Print.info('Generating configuration files...')
-
+        workers_hosts = []
+        if not bench_parameters.collocate:
+            worker_num = int(len(hosts)/2)
+            workers_hosts = hosts[worker_num:]
+            hosts = hosts[:worker_num]
+            print("Workers hosts: ", workers_hosts)  
+            print("Node hosts: ", hosts)
+        
         # Cleanup all local configuration files.
         cmd = CommandMaker.cleanup()
         subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
@@ -228,7 +229,7 @@ class Bench:
             )
         else:
             addresses = OrderedDict(
-                (x, y) for x, y in zip(names, hosts)
+                (x, [y,z]) for x, y,z in zip(names, hosts, workers_hosts)
             )
         committee = Committee(addresses, self.settings.base_port)
         committee.print(PathMaker.committee_file())
@@ -436,7 +437,7 @@ class Bench:
         # Update nodes.
         print(selected_hosts)
         try:
-            self._update(selected_hosts, bench_parameters.collocate)
+            self._update(selected_hosts)
         except (GroupException, ExecutionError) as e:
             e = FabricError(e) if isinstance(e, GroupException) else e
             raise BenchError('Failed to update nodes', e)

@@ -205,16 +205,44 @@ class InstanceManager:
         except ClientError as e:
             raise BenchError('Failed to stop instances', GCPError(e))
 
-    def hosts(self, flat=False):
+    def _get_ids_ips(self, state):
+        ret = {}
+        filter = ''
+
+        for status in state:
+            filter = 'status eq "' + status + '"'
+            request = compute_v1.AggregatedListInstancesRequest(filter=filter)
+            request.project = self.settings.project_id
+            agg_list = self.client.aggregated_list(request=request)
+            for _, response in agg_list:
+                for instance in response.instances:
+                    if instance.name == 'autobahn-instance-template':
+                        continue
+                    ret[instance.name] = instance.network_interfaces[0].access_configs[0].nat_i_p
+        return ret
+    
+    def hosts(self, flat=False, with_id = False):
+        if with_id:
+            try:
+                res = self._get_ids_ips(['STAGING', 'RUNNING'])
+                if not flat:
+                    return res
+                else:
+                    res = res.values()
+                    return res
+            except ClientError as e:
+                raise BenchError('Failed to gather instances IPs', GCPError(e))
+
         try:
             _, ips  = self._get(['STAGING', 'RUNNING'])
+            res = self._get_ids_ips(['STAGING', 'RUNNING'])
             if not flat:
                 return ips
             else:
-                return [x for y in ips.values() for x in y]
+                res = [x for y in ips.values() for x in y]
+                return res
         except ClientError as e:
             raise BenchError('Failed to gather instances IPs', GCPError(e))
-
 
     def print_info(self):
         hosts = self.hosts(False)
