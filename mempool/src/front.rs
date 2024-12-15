@@ -55,10 +55,9 @@ impl Front {
 
                         let signature = ed25519::signature::Signature::from_bytes(sig).expect("Failed to create sig");
                         let key = ed25519_dalek::PublicKey::from_bytes(&pub_key.0).expect("Failed to load pub key");
-                        let start = Instant::now();
                         match key.verify_strict(&digest.0, &signature) {
                             Ok(()) => {
-                                debug!("Client transaction verified, take taken: {:?}", start.elapsed());
+                                debug!("Client transaction verified");
 
                                 deliver.send(msg.to_vec()).await.expect("Core channel closed");
                             }

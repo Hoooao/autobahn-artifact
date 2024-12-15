@@ -206,6 +206,12 @@ class Bench:
             c.put(PathMaker.committee_file(), '.')
             c.put(PathMaker.key_file(i), '.')
             c.put(PathMaker.parameters_file(), '.')
+        if not collocate:
+            for i, host in enumerate(workers_hosts):
+                c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
+                c.put(PathMaker.committee_file(), '.')
+                c.put(PathMaker.key_file(i), '.')
+                c.put(PathMaker.parameters_file(), '.')
 
         return committee
 
