@@ -75,26 +75,32 @@ impl<Handler: MessageHandler> Receiver<Handler> {
             debug!("network: peer address receive: {}", peer);
             while let Some(frame) = reader.next().await {
                 match frame.map_err(|e| NetworkError::FailedToReceiveMessage(peer, e)) {
-                    Ok(x) => {
-                        // Verify client signature here
-                        let (msg, sig) = x.split_at(x.len() - 64); 
-                        
-                        let digest = msg.digest();
-
-                        let signature = ed25519::signature::Signature::from_bytes(sig).expect("Failed to create sig");
-                        let key = ed25519_dalek::PublicKey::from_bytes(&pub_key.0).expect("Failed to load pub key");
-                        
-                        match key.verify_strict(&digest.0, &signature) {
-                            Ok(()) => {
-                                debug!("Transaction from {} verified", peer);
-                                if let Err(e) = handler.dispatch(&mut writer, msg.freeze()).await {
+                    Ok(x) => {   
+                        match pub_key {
+                            Some(pub_key) => {
+                                let (msg, sig) = x.split_at(x.len() - 64); 
+                                let digest = msg.digest();
+                                let signature = ed25519::signature::Signature::from_bytes(sig).expect("Failed to create sig");
+                                let key = ed25519_dalek::PublicKey::from_bytes(&pub_key.0).expect("Failed to load pub key");
+                                match key.verify_strict(&digest.0, &signature) {
+                                    Ok(()) => {
+                                        debug!("Transaction from {} verified", peer);
+                                        if let Err(e) = handler.dispatch(&mut writer, msg.freeze()).await {
+                                            warn!("{}", e);
+                                            return;
+                                        }
+                                    }
+                                    Err(er) => {
+                                        debug!("Failed to verify client transaction {}", er);
+                                        return;
+                                    }
+                                }
+                            }
+                            None => {
+                                if let Err(e) = handler.dispatch(&mut writer, x.freeze()).await {
                                     warn!("{}", e);
                                     return;
                                 }
-                            }
-                            Err(er) => {
-                                debug!("Failed to verify client transaction {}", er);
-                                return;
                             }
                         }
                     }
