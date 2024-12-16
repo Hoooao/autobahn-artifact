@@ -117,6 +117,7 @@ class Bench:
 
             # Ensure there are enough hosts.
             hosts = self.manager.hosts(with_id=True)
+            print(hosts)
             if len(hosts.values()) < nodes*2:
                 return []
             ordered = []
@@ -175,7 +176,7 @@ class Bench:
 
     def _update(self, hosts):
         Print.info(
-            f'Updating {len(ips)} machines (branch "{self.settings.branch}")...'
+            f'Updating {len(hosts)} machines (branch "{self.settings.branch}")...'
         )
         cmd = [
             f'(cd {self.settings.repo_name} && git fetch -f)',
@@ -187,7 +188,7 @@ class Bench:
                 f'./{self.settings.repo_name}/target/release/'
             )
         ]
-        g = Group(*ips, user=self.settings.username, connect_kwargs=self.connect)
+        g = Group(*hosts, user=self.settings.username, connect_kwargs=self.connect)
         g.run(' && '.join(cmd))
 
     def _config(self, hosts, node_parameters, bench_parameters):
