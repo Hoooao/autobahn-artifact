@@ -14,7 +14,7 @@ class ParseError(Exception):
 
 
 class LogParser:
-    def __init__(self, clients, primaries, workers, faults=0):
+    def __init__(self, clients, primaries, workers, faults=0 ,collocate=True):
         inputs = [clients, primaries, workers]
         assert all(isinstance(x, list) for x in inputs)
         assert all(isinstance(x, str) for y in inputs for x in y)
@@ -59,8 +59,8 @@ class LogParser:
             k: v for x in sizes for k, v in x.items() if k in self.commits
         }
 
-        # Determine whether the primary and the workers are collocated.
-        self.collocate = set(primary_ips) == set(workers_ips)
+        # Determine whether the primary and the clis are collocated.
+        self.collocate = collocate
 
         # Check whether clients missed their target rate.
         if self.misses != 0:
@@ -258,7 +258,7 @@ class LogParser:
             f.write(self.result())
 
     @classmethod
-    def process(cls, directory, faults=0):
+    def process(cls, directory, faults=0, collocate=True):
         assert isinstance(directory, str)
 
         clients = []
@@ -274,4 +274,4 @@ class LogParser:
             with open(filename, 'r') as f:
                 workers += [f.read()]
 
-        return cls(clients, primaries, workers, faults=faults)
+        return cls(clients, primaries, workers, faults=faults, collocate=collocate)

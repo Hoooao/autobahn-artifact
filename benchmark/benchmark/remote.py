@@ -189,7 +189,7 @@ class Bench:
                 f'./{self.settings.repo_name}/target/release/'
             )
         ]
-        g = Group(*ips, user=self.settings.username, connect_kwargs=self.connect)
+        g = Group(*hosts, user=self.settings.username, connect_kwargs=self.connect)
         g.run(' && '.join(cmd))
 
     def _config(self, hosts, node_parameters, bench_parameters):
@@ -440,7 +440,7 @@ class Bench:
 
         # Parse logs and return the parser.
         Print.info('Parsing logs and computing performance...')
-        return LogParser.process(PathMaker.logs_path(), faults=faults)
+        return LogParser.process(PathMaker.logs_path(), faults=faults, collocate=collocate)
 
     def run(self, bench_parameters_dict, node_parameters_dict, debug=False):
         assert isinstance(debug, bool)
