@@ -40,7 +40,7 @@ pub struct Receiver<Handler: MessageHandler> {
 
 impl<Handler: MessageHandler> Receiver<Handler> {
     /// Spawn a new network receiver handling connections from any incoming peer.
-    pub fn spawn(address: SocketAddr, handler: Handler, client_pub_key: PublicKey) {
+    pub fn spawn(address: SocketAddr, handler: Handler, client_pub_key: Option<PublicKey>) {
         tokio::spawn(async move {
             Self { address, handler, client_pub_key}.run().await;
         });

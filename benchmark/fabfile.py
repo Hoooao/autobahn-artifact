@@ -143,12 +143,12 @@ def remote(ctx, debug=False):
         'header_size': 32,  # bytes
         'max_header_delay': 200,  # ms
         'gc_depth': 50,  # rounds
-        'sync_retry_delay': 1_000,  # ms
-        'sync_retry_nodes': 4,  # number of nodes
+        'sync_retry_delay': 5_000,  # ms
+        'sync_retry_nodes': 3,  # number of nodes
         'batch_size': 210_000,  # bytes, 400batch for 512 size reqs
-        'max_batch_delay': 200,  # ms
-
-        'simulate_asynchrony': True,
+        'max_batch_delay': 20,  # ms
+        # hao: took me a while to find out it shoud be False.....
+        'simulate_asynchrony': False,
         'asynchrony_type': [3],
 
         'asynchrony_start': [10_000], #ms
@@ -180,7 +180,7 @@ def plot(ctx):
         'faults': [0],
         'nodes': [4],
         'workers': [1],
-        'collocate': True,
+        'collocate': False,
         'tx_size': 512,
         'max_latency': [500_000]
     }

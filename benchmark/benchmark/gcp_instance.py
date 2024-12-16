@@ -244,7 +244,6 @@ class InstanceManager:
         except ClientError as e:
             raise BenchError('Failed to gather instances IPs', GCPError(e))
 
-
     def print_info(self):
         hosts = self.hosts(False)
         key = self.settings.key_path
