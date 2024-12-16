@@ -1,7 +1,7 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crate::error::NetworkError;
 use async_trait::async_trait;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use futures::stream::SplitSink;
 use futures::stream::StreamExt as _;
 use log::{debug, info, warn};
@@ -35,7 +35,7 @@ pub struct Receiver<Handler: MessageHandler> {
     address: SocketAddr,
     /// Struct responsible to define how to handle received messages.
     handler: Handler,
-    client_pub_key: PublicKey,
+    client_pub_key:Option<PublicKey>,
 }
 
 impl<Handler: MessageHandler> Receiver<Handler> {
@@ -68,7 +68,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
 
     /// Spawn a new runner to handle a specific TCP connection. It receives messages and process them
     /// using the provided handler.
-    async fn spawn_runner(socket: TcpStream, peer: SocketAddr, pub_key: PublicKey, handler: Handler) {
+    async fn spawn_runner(socket: TcpStream, peer: SocketAddr, pub_key:Option<PublicKey>, handler: Handler) {
         tokio::spawn(async move {
             let transport = Framed::new(socket, LengthDelimitedCodec::new());
             let (mut writer, mut reader) = transport.split();
@@ -85,7 +85,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                 match key.verify_strict(&digest.0, &signature) {
                                     Ok(()) => {
                                         debug!("Transaction from {} verified", peer);
-                                        if let Err(e) = handler.dispatch(&mut writer, msg.freeze()).await {
+                                        if let Err(e) = handler.dispatch(&mut writer, BytesMut::from(msg).freeze()).await {
                                             warn!("{}", e);
                                             return;
                                         }
