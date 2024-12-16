@@ -440,7 +440,7 @@ class Bench:
 
         # Parse logs and return the parser.
         Print.info('Parsing logs and computing performance...')
-        return LogParser.process(PathMaker.logs_path(), faults=faults)
+        return LogParser.process(PathMaker.logs_path(), faults=faults, collocate=collocate)
 
     def run(self, bench_parameters_dict, node_parameters_dict, debug=False):
         assert isinstance(debug, bool)

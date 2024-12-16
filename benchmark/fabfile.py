@@ -127,7 +127,7 @@ def remote(ctx, debug=False):
         'faults': 0,
         'nodes': [4],
         'workers': 1,
-        'co-locate': False,
+        'co-locate': True,
         # 3_000, 5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000
         'rate': [5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000],
         'tx_size': 512,
@@ -184,7 +184,7 @@ def plot(ctx):
         'workers': [1],
         'collocate': False,
         'tx_size': 512,
-        'max_latency': [500_000]
+        'max_latency': [5_000_000]
     }
     try:
         Ploter.plot(plot_params)
@@ -205,6 +205,6 @@ def kill(ctx):
 def logs(ctx):
     ''' Print a summary of the logs '''
     try:
-        print(LogParser.process('./logs', faults='?').result())
+        print(LogParser.process('./logs', faults='?', collocate="?").result())
     except ParseError as e:
         Print.error(BenchError('Failed to parse logs', e))
