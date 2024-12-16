@@ -19,7 +19,7 @@ def local(ctx, debug=True):
         'co-locate': True,
         'rate': [3_000],
         'tx_size': 512,
-        'duration': 60,
+        'duration': 8,
         'runs': 1,
 
         # Unused
@@ -119,7 +119,7 @@ def install(ctx):
 
 
 @task
-def remote(ctx, debug=False):
+def remote(ctx, debug=True):
     ''' Run benchmarks on AWS '''
     bench_params = {
         'faults': 0,

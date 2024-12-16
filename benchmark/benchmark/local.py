@@ -35,7 +35,7 @@ class LocalBench:
         except subprocess.SubprocessError as e:
             raise BenchError('Failed to kill testbed', e)
 
-    def run(self, debug=False):
+    def run(self, debug=True):
         assert isinstance(debug, bool)
         Print.heading('Starting local benchmark')
 
@@ -88,6 +88,7 @@ class LocalBench:
                         address,
                         self.tx_size,
                         rate_share,
+                        PathMaker.key_file(i),
                         [x for y in workers_addresses for _, x in y]
                     )
                     log_file = PathMaker.client_log_file(i, id)

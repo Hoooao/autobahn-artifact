@@ -276,14 +276,15 @@ class Bench:
         rate_share = ceil(rate / committee.workers())
         # hao" use node's key for cli as well... 
         key_files = [PathMaker.key_file(i) for i in range(len(cli_hosts))]
-        for (i, addresses), key_file in enumerate(workers_addresses), key_files:
+        for i, addresses in enumerate(workers_addresses):
             for (id, address) in addresses:
                 cmd = CommandMaker.run_client(
                     address,
                     bench_parameters.tx_size,
                     rate_share,
-                    key_file,
-                    [x for y in workers_addresses for _, x in y]
+                    key_files[i],
+                    [x for y in workers_addresses for _, x in y],
+                    debug=debug
                 )
                 log_file = PathMaker.client_log_file(i, id)
                 print("Running client on host: ", cli_hosts[i])
