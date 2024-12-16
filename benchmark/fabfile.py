@@ -16,8 +16,9 @@ def local(ctx, debug=True):
         'faults': 0,
         'nodes': [4],
         'workers': 1,
-        'co-locate-worker': True,
-        'co-locate-client': True,
+        # hao: originally this was for collocating worker and nodes
+        #   now it means collocating cli and nodes
+        'co-locate': False,
         'rate': [3_000],
         'tx_size': 512,
         'duration': 60,
@@ -126,12 +127,12 @@ def remote(ctx, debug=False):
         'faults': 0,
         'nodes': [4],
         'workers': 1,
-        'co-locate': True,
+        'co-locate': False,
         # 3_000, 5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000
-        'rate': [3_000, 5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000],
+        'rate': [5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000],
         'tx_size': 512,
         'duration': 30,
-        'runs': 1,
+        'runs': 2,
 
         # Unused
         'simulate_partition': False,

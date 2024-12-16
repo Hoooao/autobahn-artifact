@@ -171,6 +171,7 @@ class Bench:
         name = splitext(basename(log_file))[0]
         cmd = f'tmux new -d -s "{name}" "{command} |& tee {log_file}"'
         c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
+        print("Command: ", cmd)
         output = c.run(cmd, hide=True)
         self._check_stderr(output)
 
@@ -193,12 +194,12 @@ class Bench:
 
     def _config(self, hosts, node_parameters, bench_parameters):
         Print.info('Generating configuration files...')
-        workers_hosts = []
+        cli_hosts = []
         if not bench_parameters.collocate:
-            worker_num = int(len(hosts)/2)
-            workers_hosts = hosts[worker_num:]
-            hosts = hosts[:worker_num]
-            print("Workers hosts: ", workers_hosts)  
+            cli_num = int(len(hosts)/2)
+            cli_hosts = hosts[cli_num:]
+            hosts = hosts[:cli_num]
+            print("Cli hosts: ", cli_hosts)  
             print("Node hosts: ", hosts)
         
         # Cleanup all local configuration files.
@@ -223,15 +224,10 @@ class Bench:
 
         names = [x.name for x in keys]
 
-        if bench_parameters.collocate:
-            workers = bench_parameters.workers
-            addresses = OrderedDict(
-                (x, [y] * (workers + 1)) for x, y in zip(names, hosts)
-            )
-        else:
-            addresses = OrderedDict(
-                (x, [y,z]) for x, y,z in zip(names, hosts, workers_hosts)
-            )
+        workers = bench_parameters.workers
+        addresses = OrderedDict(
+            (x, [y] * (workers + 1)) for x, y in zip(names, hosts)
+        )
         committee = Committee(addresses, self.settings.base_port)
         committee.print(PathMaker.committee_file())
 
@@ -248,14 +244,29 @@ class Bench:
                 c.put(PathMaker.key_file(i), '.')
                 c.put(PathMaker.parameters_file(), '.')
 
+        if not bench_parameters.collocate:
+            for i, host in enumerate(cli_hosts):
+                c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
+                c.put(PathMaker.committee_file(), '.')
+                c.put(PathMaker.key_file(i), '.')
+                c.put(PathMaker.parameters_file(), '.')
+
         return committee
 
-    def _run_single(self, rate, committee, bench_parameters, debug=False):
+    def _run_single(self, rate, committee, bench_parameters, debug=False, hosts=[]):
+        if hosts == []:
+            hosts = committee.ips()
         faults = bench_parameters.faults
-
+        cli_hosts = []
+        if not bench_parameters.collocate:
+            worker_num = int(len(hosts)/2)
+            cli_hosts = hosts[worker_num:]
+            hosts = hosts[:worker_num]
+        else:
+            cli_hosts = hosts
         # Kill any potentially unfinished run and delete logs.
-        hosts = committee.ips()
         self.kill(hosts=hosts, delete_logs=True)
+        self.kill(hosts=cli_hosts, delete_logs=True)
 
         # Run the clients (they will wait for the nodes to be ready).
         # Filter all faulty nodes from the client addresses (or they will wait
@@ -265,16 +276,15 @@ class Bench:
         rate_share = ceil(rate / committee.workers())
         for i, addresses in enumerate(workers_addresses):
             for (id, address) in addresses:
-                host = Committee.ip(address)
                 cmd = CommandMaker.run_client(
                     address,
                     bench_parameters.tx_size,
                     rate_share,
                     [x for y in workers_addresses for _, x in y]
                 )
-                print(cmd)
                 log_file = PathMaker.client_log_file(i, id)
-                self._background_run(host, cmd, log_file)
+                print("Running client on host: ", cli_hosts[i])
+                self._background_run(cli_hosts[i], cmd, log_file)
 
         # Run the primaries (except the faulty ones).
         Print.info('Booting primaries...')
@@ -288,6 +298,7 @@ class Bench:
                 debug=debug
             )
             log_file = PathMaker.primary_log_file(i)
+            print("Running primary on host: ", host)
             self._background_run(host, cmd, log_file)
 
         # Run the workers (except the faulty ones).
@@ -304,6 +315,7 @@ class Bench:
                     debug=debug
                 )
                 log_file = PathMaker.worker_log_file(i, id)
+                print("Running worker on host: ", host)
                 self._background_run(host, cmd, log_file)
 
          # Wait for all transactions to be processed.
@@ -385,7 +397,7 @@ class Bench:
         #    log_file = PathMaker.primary_log_file(i)
         #    self._background_run(host, cmd, log_file)
 
-    def _logs(self, committee, faults):
+    def _logs(self, committee, faults, collocate=True, cli_hosts=None):
         # Delete local logs (if any).
         cmd = CommandMaker.clean_logs()
         subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
@@ -397,10 +409,11 @@ class Bench:
             for id, address in addresses:
                 host = Committee.ip(address)
                 c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
-                c.get(
+                if collocate:
+                    c.get(
                     PathMaker.client_log_file(i, id), 
                     local=PathMaker.client_log_file(i, id)
-                )
+                    )
                 c.get(
                     PathMaker.worker_log_file(i, id), 
                     local=PathMaker.worker_log_file(i, id)
@@ -415,6 +428,15 @@ class Bench:
                 PathMaker.primary_log_file(i), 
                 local=PathMaker.primary_log_file(i)
             )
+        if not collocate:
+            progress = progress_bar(cli_hosts, prefix='Downloading uncollocated Client logs:')
+            for i, host in enumerate(progress):
+                c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
+                c.get(
+                    PathMaker.client_log_file(i, 0), 
+                    local=PathMaker.client_log_file(i, 0)
+                )
+
 
         # Parse logs and return the parser.
         Print.info('Parsing logs and computing performance...')
@@ -465,11 +487,11 @@ class Bench:
                     Print.heading(f'Run {i+1}/{bench_parameters.runs}')
                     try:
                         self._run_single(
-                            r, committee_copy, bench_parameters, debug
+                            r, committee_copy, bench_parameters, debug, selected_hosts
                         )
 
                         faults = bench_parameters.faults
-                        logger = self._logs(committee_copy, faults)
+                        logger = self._logs(committee_copy, faults, bench_parameters.collocate, selected_hosts[int(len(selected_hosts)/2):])
                         logger.print(PathMaker.result_file(
                             faults,
                             n, 
