@@ -6,19 +6,18 @@ use clap::{crate_name, crate_version, App, AppSettings};
 use env_logger::Env;
 use futures::future::join_all;
 use futures::sink::SinkExt as _;
-use log::{info, warn};
+use log::{info, warn, debug};
 use rand::Rng;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio::time::{interval, sleep, Duration, Instant};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
-mod config;
 
 use crypto::SignatureService;
-use crate::config::Export as _;
+use config::Export as _;
 
-use crate::config::Secret;
+use config::Secret;
 use crypto::Hash;
 
 #[tokio::main]
@@ -79,7 +78,7 @@ async fn main() -> Result<()> {
     // Make the data store.
     let signature_service = SignatureService::new(secret_key);
 
-    let client = Client {
+    let mut client = Client {
         target,
         size,
         rate,
@@ -108,8 +107,8 @@ impl Client {
     {
         let digest = tx.as_ref().digest();
         let signature = self.signature_service.request_signature(digest).await;
-        signature.flatten()
         debug!("Signature added to tx");
+        signature.flatten()
     }
 
     pub async fn send(&mut self) -> Result<()> {

@@ -1,5 +1,5 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
-use crypto::{generate_production_keypair, PublicKey, SecretKey};
+use crypto::{generate_production_keypair, generate_keypair, PublicKey, SecretKey};
 use log::info;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -9,6 +9,8 @@ use std::io::BufWriter;
 use std::io::Write as _;
 use std::net::SocketAddr;
 use thiserror::Error;
+use rand::rngs::StdRng;
+use rand::SeedableRng as _;
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -23,6 +25,9 @@ pub enum ConfigError {
 
     #[error("Failed to write config file '{file}': {message}")]
     ExportError { file: String, message: String },
+
+    #[error("Failed to read config file '{file}': {message}")]
+    ReadError { file: String, message: String },
 }
 
 pub trait Import: DeserializeOwned {
@@ -38,7 +43,7 @@ pub trait Import: DeserializeOwned {
     }
 }
 
-pub trait Export: Serialize {
+pub trait Export: Serialize + DeserializeOwned{
     fn export(&self, path: &str) -> Result<(), ConfigError> {
         let writer = || -> Result<(), std::io::Error> {
             let file = OpenOptions::new().create(true).write(true).open(path)?;
@@ -49,6 +54,18 @@ pub trait Export: Serialize {
             Ok(())
         };
         writer().map_err(|e| ConfigError::ExportError {
+            file: path.to_string(),
+            message: e.to_string(),
+        })
+    }
+
+    fn read(path: &str) -> Result<Self, ConfigError> {
+        info!("{path}");
+        let reader = || -> Result<Self, std::io::Error> {
+            let data = fs::read(path)?;
+            Ok(serde_json::from_slice(data.as_slice())?)
+        };
+        reader().map_err(|e| ConfigError::ReadError {
             file: path.to_string(),
             message: e.to_string(),
         })
@@ -294,5 +311,28 @@ impl KeyPair {
 impl Default for KeyPair {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Secret {
+    pub name: PublicKey,
+    pub secret: SecretKey,
+}
+
+impl Secret {
+    pub fn new() -> Self {
+        let (name, secret) = generate_production_keypair();
+        Self { name, secret }
+    }
+}
+
+impl Export for Secret {}
+
+impl Default for Secret {
+    fn default() -> Self {
+        let mut rng = StdRng::from_seed([0; 32]);
+        let (name, secret) = generate_keypair(&mut rng);
+        Self { name, secret }
     }
 }

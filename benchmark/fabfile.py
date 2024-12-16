@@ -127,10 +127,10 @@ def remote(ctx, debug=False):
         'workers': 1,
         'co-locate': True,
         # 3_000, 5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000
-        'rate': [3_000, 5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000],
+        'rate': [3_000],
         'tx_size': 512,
-        'duration': 30,
-        'runs': 2,
+        'duration': 15,
+        'runs': 1,
 
         # Unused
         'simulate_partition': False,
