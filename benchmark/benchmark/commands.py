@@ -54,7 +54,8 @@ class CommandMaker:
         assert all(isinstance(x, str) for x in nodes)
         v = '-vvv' if debug else '-vv'
         nodes = f'--nodes {" ".join(nodes)}' if nodes else ''
-        return f'./benchmark_client {v} {address} --size {size} --rate {rate} --keys {keys} {nodes}'
+        rate = int(rate/2)
+        return f'./benchmark_client {v} {address} --size {size} --rate {rate} --keys {keys} {nodes} '
 
     @staticmethod
     def kill():

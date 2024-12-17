@@ -75,7 +75,8 @@ async fn main() -> Result<()> {
     info!("Transactions size: {} B", size);
 
     // NOTE: This log entry is used to compute performance.
-    info!("Transactions rate: {} tx/s", rate);
+    // Hao: we are using 3 threads, so we need to multiply the rate by 3 to get the actual rate.
+    info!("Transactions rate: {} tx/s", rate * 3);
 
     info!("Key file provided: {}", key_file);
     let secret = Secret::read(key_file)?;
