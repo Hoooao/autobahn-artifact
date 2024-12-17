@@ -119,7 +119,7 @@ def install(ctx):
 
 
 @task
-def remote(ctx, debug=True):
+def remote(ctx, debug=False):
     ''' Run benchmarks on AWS '''
     bench_params = {
         'faults': 0,
@@ -127,10 +127,10 @@ def remote(ctx, debug=True):
         'workers': 1,
         'co-locate': True,
         # 3_000, 5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000
-        'rate': [3_000],
+        'rate': [30_000, 40_000],
         'tx_size': 512,
-        'duration': 15,
-        'runs': 1,
+        'duration': 35,
+        'runs': 2,
 
         # Unused
         'simulate_partition': False,
