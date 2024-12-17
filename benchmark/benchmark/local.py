@@ -24,21 +24,17 @@ class LocalBench:
         return getattr(self.bench_parameters, attr)
 
     def _background_run(self, command, log_file):
-        if "client" in command:
-            # Hao: ofload the rate to 3 worker on same machine.. to satisfy the required rate
-            name_1 = splitext(basename(log_file))[0]
-            cmd = f'{command} 2> {log_file}'
-            subprocess.run(['tmux', 'new', '-d', '-s', name_1, cmd], check=True)
-            name_2 = splitext(basename(log_file))[0] + "-offload1"
-            cmd = f'{command} 2> {log_file}_1'
-            subprocess.run(['tmux', 'new', '-d', '-s', name_2, cmd], check=True)
-            name_3 = splitext(basename(log_file))[0] + "-offload3"
-            cmd = f'{command} 2> {log_file}_3'
-            subprocess.run(['tmux', 'new', '-d', '-s', name_3, cmd], check=True)
-            return
         name = splitext(basename(log_file))[0]
         cmd = f'{command} 2> {log_file}'
         subprocess.run(['tmux', 'new', '-d', '-s', name, cmd], check=True)
+        # Hao: ofload the rate to 3 worker on same machine.. to satisfy the required rate
+        if "client" in command:
+            for i in range(1, 3):
+                name = splitext(basename(log_file))[0] + f"-offload{i}"
+                cmd = f'{command} 2> {log_file}_{i}'
+                subprocess.run(['tmux', 'new', '-d', '-s', name, cmd], check=True)
+            
+
         
 
     def _kill_nodes(self):
