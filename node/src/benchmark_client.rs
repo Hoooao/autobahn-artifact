@@ -29,6 +29,7 @@ async fn main() -> Result<()> {
         .args_from_usage("<ADDR> 'The network address of the node where to send txs'")
         .args_from_usage("--size=<INT> 'The size of each transaction in bytes'")
         .args_from_usage("--rate=<INT> 'The rate (txs/s) at which to send the transactions'")
+        .args_from_usage("--counter=<INT> 'The starting counter for sample tx to avoid duplicates in threaded clients'")
         .args_from_usage("--nodes=[ADDR]... 'Network addresses that must be reachable before starting the benchmark.'")
         .setting(AppSettings::ArgRequiredElseHelp)
         .args_from_usage("--keys=<FILE> 'The file containing the key information for the benchmark.'")
@@ -66,6 +67,11 @@ async fn main() -> Result<()> {
         .map(|x| x.parse::<SocketAddr>())
         .collect::<Result<Vec<_>, _>>()
         .context("Invalid socket address format")?;
+    let init_counter = matches
+        .value_of("counter")
+        .unwrap_or("0")
+        .parse::<u64>()
+        .context("The starting counter of sample transactions must be a non-negative integer")?;
 
     let key_file = matches.value_of("keys").unwrap();
 
@@ -92,6 +98,7 @@ async fn main() -> Result<()> {
         rate,
         nodes,
         signature_service,
+        init_counter
     };
 
     // Wait for all nodes to be online and synchronized.
@@ -108,6 +115,7 @@ struct Client {
     nodes: Vec<SocketAddr>,
     // ========= Added for Evaluation purposes ========= 
     signature_service: SignatureService,
+    init_counter: u64,
 }
 
 impl Client {
@@ -138,14 +146,14 @@ impl Client {
         // Submit all transactions.
         let burst = self.rate / PRECISION;
         let mut tx = BytesMut::with_capacity(self.size+ 64); // + 64 for signatures
-        let mut counter = 0;
+        let mut counter = self.init_counter;
         let mut r = rand::thread_rng().gen();
         let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
         let interval = interval(Duration::from_millis(BURST_DURATION));
         tokio::pin!(interval);
 
         // NOTE: This log entry is used to compute performance.
-        info!("Start sending transactions");
+        info!("Start sending transactions, sample counter starts at {}", counter);
 
         'main: loop {
             interval.as_mut().tick().await;
