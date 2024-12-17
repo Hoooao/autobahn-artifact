@@ -119,7 +119,7 @@ def install(ctx):
 
 
 @task
-def remote(ctx, debug=False):
+def remote(ctx, debug=True):
     ''' Run benchmarks on AWS '''
     bench_params = {
         'faults': 0,

@@ -3,6 +3,7 @@ use crate::worker::SerializedBatchDigestMessage;
 use bytes::Bytes;
 use network::SimpleSender;
 use std::net::SocketAddr;
+use log::debug;
 use tokio::sync::mpsc::Receiver;
 
 // Send batches' digests to the primary.
@@ -31,6 +32,7 @@ impl PrimaryConnector {
     async fn run(&mut self) {
         while let Some(digest) = self.rx_digest.recv().await {
             // Send the digest through the network.
+            debug!("sending digest {:?} from primary connector to primary", digest);
             self.network
                 .send(self.primary_address, Bytes::from(digest))
                 .await;

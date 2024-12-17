@@ -426,9 +426,6 @@ class Bench:
                     PathMaker.client_log_file(i, id), 
                     local=PathMaker.client_log_file(i, id)
                     )
-                else:
-                    for ind in range(1,2):
-                        c.run(f'cat {PathMaker.client_log_file(i, id)}_{ind} > {PathMaker.client_log_file(i, id)}')
                 c.get(
                     PathMaker.worker_log_file(i, id), 
                     local=PathMaker.worker_log_file(i, id)
@@ -447,6 +444,8 @@ class Bench:
             progress = progress_bar(cli_hosts, prefix='Downloading uncollocated Client logs:')
             for i, host in enumerate(progress):
                 c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
+                for ind in range(1,2):
+                    c.run(f"cat {PathMaker.client_log_file(i, 0)}_{ind} >> {PathMaker.client_log_file(i, 0)}")
                 c.get(
                     PathMaker.client_log_file(i, 0), 
                     local=PathMaker.client_log_file(i, 0)

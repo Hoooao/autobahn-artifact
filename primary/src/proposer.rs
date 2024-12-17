@@ -254,6 +254,7 @@ impl Proposer {
                     }
                 }
                 Some((digest, worker_id)) = self.rx_workers.recv() => {
+                    debug!("Received digest from own worker {} from primary", digest);
                     self.payload_size += digest.size();
                     self.digests.push((digest, worker_id));
                 }

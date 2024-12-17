@@ -14,7 +14,7 @@ use bytes::Bytes;
 use config::{Committee, KeyPair, Parameters, WorkerId};
 use crypto::{Digest, PublicKey, SignatureService};
 use futures::sink::SinkExt as _;
-use log::info;
+use log::{info,debug};
 use network::{MessageHandler, Receiver as NetworkReceiver, Writer};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
@@ -270,11 +270,14 @@ impl MessageHandler for WorkerReceiverHandler {
     ) -> Result<(), Box<dyn Error>> {
         // Deserialize and parse the message.
         match bincode::deserialize(&serialized).map_err(DagError::SerializationError)? {
-            WorkerPrimaryMessage::OurBatch(digest, worker_id) => self
+            WorkerPrimaryMessage::OurBatch(digest, worker_id) =>{
+                debug!("Primary received a batch from own worker {} with digest {}, sending to proposer", worker_id, digest);
+                self
                 .tx_our_digests
                 .send((digest, worker_id))
                 .await
-                .expect("Failed to send workers' digests"),
+                .expect("Failed to send workers' digests")
+            },
             WorkerPrimaryMessage::OthersBatch(digest, worker_id) => self
                 .tx_others_digests
                 .send((digest, worker_id))
