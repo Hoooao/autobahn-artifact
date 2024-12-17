@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
         .args_from_usage("<ADDR> 'The network address of the node where to send txs'")
         .args_from_usage("--size=<INT> 'The size of each transaction in bytes'")
         .args_from_usage("--rate=<INT> 'The rate (txs/s) at which to send the transactions'")
-        .args_from_usage("--counter=<INT> 'The starting counter for sample tx to avoid duplicates in threaded clients'")
+        .args_from_usage("--counter=[INT] 'The starting counter for sample tx to avoid duplicates in threaded clients' [0]")
         .args_from_usage("--nodes=[ADDR]... 'Network addresses that must be reachable before starting the benchmark.'")
         .setting(AppSettings::ArgRequiredElseHelp)
         .args_from_usage("--keys=<FILE> 'The file containing the key information for the benchmark.'")
@@ -68,10 +68,11 @@ async fn main() -> Result<()> {
         .collect::<Result<Vec<_>, _>>()
         .context("Invalid socket address format")?;
     let init_counter = matches
-        .value_of("counter")
-        .unwrap_or("0")
-        .parse::<u64>()
-        .context("The starting counter of sample transactions must be a non-negative integer")?;
+        .value_of("counter")              
+        .map(|val| val.parse::<u64>())    
+        .transpose()                 
+        .context("The starting counter of sample transactions must be a non-negative integer")?
+        .unwrap_or(0);                     
 
     let key_file = matches.value_of("keys").unwrap();
 
@@ -82,7 +83,7 @@ async fn main() -> Result<()> {
 
     // NOTE: This log entry is used to compute performance.
     // Hao: we are using 3 threads, so we need to multiply the rate by 3 to get the actual rate.
-    info!("Transactions rate: {} tx/s", rate * 3);
+    info!("Transactions rate: {} tx/s", rate * 2);
 
     info!("Key file provided: {}", key_file);
     let secret = Secret::read(key_file)?;

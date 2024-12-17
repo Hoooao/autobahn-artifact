@@ -19,7 +19,7 @@ def local(ctx, debug=True):
         'co-locate': True,
         'rate': [3_000],
         'tx_size': 512,
-        'duration': 8,
+        'duration': 5,
         'runs': 1,
 
         # Unused
@@ -127,7 +127,7 @@ def remote(ctx, debug=False):
         'workers': 1,
         'co-locate': False,
         # 3_000, 5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000
-        'rate': [3_000, 40_000],
+        'rate': [3_000],
         'tx_size': 512,
         'duration': 35,
         'runs': 1,

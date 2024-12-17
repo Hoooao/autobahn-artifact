@@ -27,11 +27,11 @@ class LocalBench:
         name = splitext(basename(log_file))[0]
         cmd = f'{command} 2> {log_file}'
         subprocess.run(['tmux', 'new', '-d', '-s', name, cmd], check=True)
-        # Hao: ofload the rate to 3 worker on same machine.. to satisfy the required rate
+        # Hao: offload the rate to 3 worker on same machine.. to satisfy the required rate
         if "client" in command:
-            for i in range(1, 3):
+            for i in range(1, 2):
                 name = splitext(basename(log_file))[0] + f"-offload{i}"
-                cmd = f'{command} 2> {log_file}_{i}'
+                cmd = f'{command} --counter {i*1000} 2> {log_file}_{i}'
                 subprocess.run(['tmux', 'new', '-d', '-s', name, cmd], check=True)
             
 
@@ -135,7 +135,6 @@ class LocalBench:
             Print.info(f'Running benchmark ({self.duration} sec)...')
             sleep(self.duration)
             self._kill_nodes()
-
             # Parse logs and return the parser.
             Print.info('Parsing logs...')
             return LogParser.process(PathMaker.logs_path(), faults=self.faults)

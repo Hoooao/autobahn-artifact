@@ -178,7 +178,7 @@ class Bench:
             # Hao: offload the rate to 3 worker on same machine.. to satisfy the required rate
             for i in range(1, 2):
                 name = splitext(basename(log_file))[0] + "-offload" + str(i)
-                cmd = f'tmux new -d -s "{name}" "{command} --counter={i*1000} |& tee {log_file}_{i}"'
+                cmd = f'tmux new -d -s "{name}" "{command} --counter {i*1000} |& tee {log_file}_{i}"'
                 print("Command: ", cmd)
                 output = c.run(cmd, hide=True)
                 self._check_stderr(output)
@@ -426,6 +426,9 @@ class Bench:
                     PathMaker.client_log_file(i, id), 
                     local=PathMaker.client_log_file(i, id)
                     )
+                else:
+                    for ind in range(1,2):
+                        c.run(f'cat {PathMaker.client_log_file(i, id)}_{ind} > {PathMaker.client_log_file(i, id)}')
                 c.get(
                     PathMaker.worker_log_file(i, id), 
                     local=PathMaker.worker_log_file(i, id)
