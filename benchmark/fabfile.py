@@ -13,10 +13,13 @@ from benchmark.remote import Bench, BenchError
 def local(ctx, debug=True):
     ''' Run benchmarks on localhost '''
     bench_params = {
-        'faults': 0, 
-        'nodes': 4,
+        'faults': 0,
+        'nodes': [4],
         'workers': 1,
-        'rate': 50_000,
+        # hao: originally this was for collocating worker and nodes
+        #   now it means collocating cli and nodes
+        'co-locate': False,
+        'rate': [3_000],
         'tx_size': 512,
         'duration': 20,
 
@@ -43,7 +46,7 @@ def local(ctx, debug=True):
         'use_ride_share': False,
         'car_timeout': 2000,
 
-        'simulate_asynchrony': True,
+        'simulate_asynchrony': False,
         'asynchrony_type': [3],
 
         'asynchrony_start': [10_000], #ms
@@ -124,13 +127,14 @@ def remote(ctx, debug=True):
         'nodes': [4],
         'workers': 1,
         'co-locate': True,
-        'rate': [200_000],
+        # 3_000, 5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000
+        'rate': [5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000],
         'tx_size': 512,
-        'duration': 50,
-        'runs': 1,
+        'duration': 30,
+        'runs': 2,
 
         # Unused
-        'simulate_partition': True,
+        'simulate_partition': False,
         'partition_start': 5,
         'partition_duration': 5,
         'partition_nodes': 1,
@@ -152,7 +156,7 @@ def remote(ctx, debug=True):
         'use_ride_share': False,
         'car_timeout': 2000,
 
-        'simulate_asynchrony': True,
+        'simulate_asynchrony': False,
         'asynchrony_type': [3],
 
         'asynchrony_start': [0], #ms
@@ -175,10 +179,10 @@ def plot(ctx):
     plot_params = {
         'faults': [0],
         'nodes': [4],
-        'workers': [1, 4, 7, 10],
-        'collocate': True,
+        'workers': [1],
+        'collocate': False,
         'tx_size': 512,
-        'max_latency': [2_000, 2_500]
+        'max_latency': [5_000_000]
     }
     try:
         Ploter.plot(plot_params)
@@ -199,6 +203,6 @@ def kill(ctx):
 def logs(ctx):
     ''' Print a summary of the logs '''
     try:
-        print(LogParser.process('./logs', faults='?').result())
+        print(LogParser.process('./logs', faults='?', collocate="?").result())
     except ParseError as e:
         Print.error(BenchError('Failed to parse logs', e))

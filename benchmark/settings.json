@@ -6,8 +6,8 @@
     "port": 5000,
     "repo": {
         "name": "autobahn-artifact",
-        "url": "https://github.com/neilgiri/autobahn-artifact.git",
-        "branch": "autobahn-blips"
+        "url": "https://github.com/Hoooao/autobahn-artifact.git",
+        "branch": "autobahn-blips-no-cliauth"
     },
     "project_id": "mythic-veld-419517",
     "username": "hao",
