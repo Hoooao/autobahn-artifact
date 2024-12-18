@@ -1,7 +1,10 @@
-// Copyright(C) Facebook, Inc. and its affiliates.
+use ed25519_dalek::Sha512;
+use ed25519_dalek::Digest as _;
+
 use ed25519_dalek as dalek;
 use ed25519_dalek::ed25519;
 use ed25519_dalek::Signer as _;
+
 use rand::rngs::OsRng;
 use rand::{CryptoRng, RngCore};
 use serde::{de, ser, Deserialize, Serialize};
@@ -61,7 +64,12 @@ pub trait Hash {
     fn digest(&self) -> Digest;
 }
 
-/// Represents a public key (in bytes).
+impl Hash for &[u8] {
+    fn digest(&self) -> Digest {
+        Digest(Sha512::digest(self).as_slice()[..32].try_into().unwrap())
+    }
+}
+
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd, Default)]
 pub struct PublicKey(pub [u8; 32]);
 
@@ -190,7 +198,7 @@ impl Signature {
         Signature { part1, part2 }
     }
 
-    fn flatten(&self) -> [u8; 64] {
+    pub fn flatten(&self) -> [u8; 64] {
         [self.part1, self.part2]
             .concat()
             .try_into()

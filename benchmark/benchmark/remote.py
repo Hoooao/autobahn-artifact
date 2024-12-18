@@ -129,6 +129,7 @@ class Bench:
                     ordered.append(v)
             return ordered
 
+    # Hao: not used?
     def _select_hosts_config(self, bench_parameters):
         # Collocate the primary and its workers on the same machine.
         if bench_parameters.collocate:
@@ -167,13 +168,21 @@ class Bench:
 
 
     def _background_run(self, host, command, log_file):
+        c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
         name = splitext(basename(log_file))[0]
         cmd = f'tmux new -d -s "{name}" "{command} |& tee {log_file}"'
-        c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
         print("Command: ", cmd)
         output = c.run(cmd, hide=True)
         self._check_stderr(output)
-
+        if "client" in command:
+            # Hao: offload the rate to 3 worker on same machine.. to satisfy the required rate
+            for i in range(1, 1):
+                name = splitext(basename(log_file))[0] + "-offload" + str(i)
+                cmd = f'tmux new -d -s "{name}" "{command} --counter {i*1000} |& tee {log_file}_{i}"'
+                print("Command: ", cmd)
+                output = c.run(cmd, hide=True)
+                self._check_stderr(output)
+        
     def _update(self, hosts):
         Print.info(
             f'Updating {len(hosts)} machines (branch "{self.settings.branch}")...'
@@ -273,13 +282,17 @@ class Bench:
         Print.info('Booting clients...')
         workers_addresses = committee.workers_addresses(faults)
         rate_share = ceil(rate / committee.workers())
+        # hao" use node's key for cli as well... 
+        key_files = [PathMaker.key_file(i) for i in range(len(cli_hosts))]
         for i, addresses in enumerate(workers_addresses):
             for (id, address) in addresses:
                 cmd = CommandMaker.run_client(
                     address,
                     bench_parameters.tx_size,
                     rate_share,
-                    [x for y in workers_addresses for _, x in y]
+                    key_files[i],
+                    [x for y in workers_addresses for _, x in y],
+                    debug=debug
                 )
                 log_file = PathMaker.client_log_file(i, id)
                 print("Running client on host: ", cli_hosts[i])
@@ -431,6 +444,8 @@ class Bench:
             progress = progress_bar(cli_hosts, prefix='Downloading uncollocated Client logs:')
             for i, host in enumerate(progress):
                 c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
+                for ind in range(1, 1):
+                    c.run(f'cat {PathMaker.client_log_file(i, 0)}_{ind} >> {PathMaker.client_log_file(i, 0)}')
                 c.get(
                     PathMaker.client_log_file(i, 0), 
                     local=PathMaker.client_log_file(i, 0)

@@ -27,6 +27,13 @@ class LocalBench:
         name = splitext(basename(log_file))[0]
         cmd = f'{command} 2> {log_file}'
         subprocess.run(['tmux', 'new', '-d', '-s', name, cmd], check=True)
+        # Hao: offload the rate to 3 worker on same machine.. to satisfy the required rate
+        if "client" in command:
+            for i in range(1, 1):
+                name = splitext(basename(log_file))[0] + f"-offload{i}"
+                cmd = f'{command} --counter {i*1000} 2> {log_file}_{i}'
+                subprocess.run(['tmux', 'new', '-d', '-s', name, cmd], check=True)
+            
 
     def _kill_nodes(self):
         try:
@@ -35,7 +42,7 @@ class LocalBench:
         except subprocess.SubprocessError as e:
             raise BenchError('Failed to kill testbed', e)
 
-    def run(self, debug=False):
+    def run(self, debug=True):
         assert isinstance(debug, bool)
         Print.heading('Starting local benchmark')
 
@@ -88,6 +95,7 @@ class LocalBench:
                         address,
                         self.tx_size,
                         rate_share,
+                        PathMaker.key_file(i),
                         [x for y in workers_addresses for _, x in y]
                     )
                     log_file = PathMaker.client_log_file(i, id)
@@ -125,7 +133,6 @@ class LocalBench:
             Print.info(f'Running benchmark ({self.duration} sec)...')
             sleep(self.duration)
             self._kill_nodes()
-
             # Parse logs and return the parser.
             Print.info('Parsing logs...')
             return LogParser.process(PathMaker.logs_path(), faults=self.faults)

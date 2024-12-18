@@ -5,12 +5,6 @@ use ed25519_dalek::Sha512;
 use rand::rngs::StdRng;
 use rand::SeedableRng as _;
 
-impl Hash for &[u8] {
-    fn digest(&self) -> Digest {
-        Digest(Sha512::digest(self).as_slice()[..32].try_into().unwrap())
-    }
-}
-
 impl PartialEq for SecretKey {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0

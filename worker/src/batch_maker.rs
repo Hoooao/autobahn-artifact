@@ -6,7 +6,10 @@ use crate::worker::WorkerMessage;
 use bytes::Bytes;
 //#[cfg(feature = "benchmark")]
 use crypto::Digest;
+use crypto::Hash as _;
 use crypto::PublicKey;
+use ed25519_dalek::ed25519;
+
 //#[cfg(feature = "benchmark")]
 use ed25519_dalek::{Digest as _, Sha512};
 use futures::stream::FuturesUnordered;
@@ -210,16 +213,37 @@ impl BatchMaker {
             tokio::select! {
                 // Assemble client transactions into batches of preset size.
                 Some(transaction) = self.rx_transaction.recv() => {
-                    self.current_batch_size += transaction.len();
-                    self.current_batch.push(transaction);
-                    if self.current_batch_size >= self.batch_size {
-                        self.seal().await;
+                    // debug!("{:?}", transaction.len());
+                    // debug!("{:?}", self.name);
 
-                        debug!("batch ready it took {:?} ms", current_time.elapsed().as_millis());
-                        current_time = Instant::now();
+                    let (msg, sig) = transaction.split_at(transaction.len() - 64); 
 
-                        timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
+                    let digest = msg.digest();
+
+
+                    let signature = ed25519::signature::Signature::from_bytes(sig).expect("Failed to create sig");
+                    let key = ed25519_dalek::PublicKey::from_bytes(&self.name.0).expect("Failed to load pub key");
+
+                    match key.verify_strict(&digest.0, &signature) {
+                        Ok(()) => {
+                            // debug!("Client transaction verified");
+                            self.current_batch_size += msg.len();
+                            self.current_batch.push(msg.to_vec());
+                            if self.current_batch_size >= self.batch_size {
+                                self.seal().await;
+        
+                                debug!("batch ready it took {:?} ms", current_time.elapsed().as_millis());
+                                current_time = Instant::now();
+        
+                                timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
+                            }
+                        }
+                        Err(e) => {
+                            debug!("Failed to verify client transaction {}", e);
+                            return;
+                        }
                     }
+
                 },
 
                 // If the timer triggers, seal the batch even if it contains few transactions.

@@ -91,7 +91,6 @@ class LogParser:
 
         tmp = findall(r'\[(.*Z) .* sample transaction (\d+)', log)
         samples = {int(s): self._to_posix(t) for t, s in tmp}
-
         return size, rate, start, misses, samples
 
     def _parse_primaries(self, log):
@@ -274,4 +273,4 @@ class LogParser:
             with open(filename, 'r') as f:
                 workers += [f.read()]
 
-        return cls(clients, primaries, workers, faults=faults)
+        return cls(clients, primaries, workers, faults=faults, collocate=collocate)

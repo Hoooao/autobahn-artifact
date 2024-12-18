@@ -37,11 +37,13 @@ class InstanceManager:
         # 'terminated', 'stopping', and 'stopped'.
         ids, ips = defaultdict(list), defaultdict(list)
         filter = ''
+
         for status in state:
             filter = 'status eq "' + status + '"'
             request = compute_v1.AggregatedListInstancesRequest(filter=filter)
             request.project = self.settings.project_id
             agg_list = self.client.aggregated_list(request=request)
+
             for zone, response in agg_list:
                 # Removes the zones/ prefix from the zone name
                 zone = zone[6:]
