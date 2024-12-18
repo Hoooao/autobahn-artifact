@@ -126,12 +126,12 @@ def remote(ctx, debug=True):
         'faults': 0,
         'nodes': [4],
         'workers': 1,
-        'co-locate': True,
-        # 3_000, 5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000
-        'rate': [5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000],
+        'co-locate': False,
+        # 3_000, 10_000, 15_000, 30_000, 60_000, 150_000, 300_000, 400_000, 500_000
+        'rate': [150_000, 300_000, 400_000, 500_000],
         'tx_size': 512,
-        'duration': 30,
-        'runs': 2,
+        'duration': 60,
+        'runs': 1,
 
         # Unused
         'simulate_partition': False,
@@ -146,8 +146,8 @@ def remote(ctx, debug=True):
         'gc_depth': 50,  # rounds
         'sync_retry_delay': 1_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
-        'batch_size': 500_000,  # bytes
-        'max_batch_delay': 200,  # ms
+        'batch_size': 210_000,  # bytes
+        'max_batch_delay': 5_000,  # ms
         'use_optimistic_tips': False,
         'use_parallel_proposals': True,
         'k': 1,
