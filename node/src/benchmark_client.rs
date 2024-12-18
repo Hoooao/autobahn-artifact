@@ -162,8 +162,11 @@ impl Client {
 
         // NOTE: This log entry is used to compute performance.
         info!("Start sending transactions");
-
+        let mut break_loop = false;
         'main: loop {
+            if break_loop {
+                break;
+            }
             interval.as_mut().tick().await;
             let now = Instant::now();
 
@@ -174,10 +177,6 @@ impl Client {
             let mut sig_copy = self.signature_service.clone();
 
             let channel_tx = channel_tx.clone();
-            // check if the channel is closed
-            if channel_tx.is_closed() {
-                return Ok(());
-            }
             tokio::spawn(async move {
                 for x in 0..burst {
                     let msg = if x == counter_copy % burst {
@@ -206,10 +205,10 @@ impl Client {
 
                         tx.split().freeze()
                     };
-
-                    
-                    channel_tx.send(msg).await.unwrap();
-
+                    if let Err(e) = channel_tx.send(msg).await {
+                        warn!("Failed to send message to sender: {}", e);
+                        break_loop = true;
+                    }
                 }
             });
             
