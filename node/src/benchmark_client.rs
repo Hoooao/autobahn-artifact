@@ -174,7 +174,10 @@ impl Client {
             let mut sig_copy = self.signature_service.clone();
 
             let channel_tx = channel_tx.clone();
-
+            // check if the channel is closed
+            if channel_tx.is_closed() {
+                return Ok(());
+            }
             tokio::spawn(async move {
                 for x in 0..burst {
                     let msg = if x == counter_copy % burst {
