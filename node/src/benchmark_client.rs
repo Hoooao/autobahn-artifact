@@ -149,11 +149,11 @@ impl Client {
 
         // NOTE: This log entry is used to compute performance.
         info!("Start sending transactions");
-
+        let mut tx_num = 0;
         'main: loop {
             interval.as_mut().tick().await;
             let now = Instant::now();
-
+            
             for x in 0..burst {
                 let bytes = if x == counter % burst {
                     // NOTE: This log entry is used to compute performance.
@@ -181,10 +181,11 @@ impl Client {
 
                     tx.split().freeze()
                 };
-
+                tx_num += 1;
                 //Note: Does not sign transactions. Transaction id-s are not unique w.r.t to content.
                 if let Err(e) = transport.send(bytes).await { //Uses TCP connection to send request to assigned worker. Note: Optimistically only sending to one worker.
                     warn!("Failed to send transaction: {}", e);
+                    info!("Sent {} transactions", tx_num);
                     break 'main;
                 }
             }

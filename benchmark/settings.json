@@ -7,7 +7,7 @@
     "repo": {
         "name": "autobahn-artifact",
         "url": "https://github.com/Hoooao/autobahn-artifact.git",
-        "branch": "autobahn-blips"
+        "branch": "autobahn-blips-auth-single-thread"
     },
     "project_id": "mythic-veld-419517",
     "username": "hao",
