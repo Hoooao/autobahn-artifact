@@ -122,7 +122,7 @@ async fn sign(signature_service: &mut SignatureService, tx: &BytesMut) -> [u8; 6
 impl Client {
     pub async fn send(&mut self) -> Result<()> {
         const PRECISION: u64 = 20; // Sample precision.
-        const BURST_DURATION: u64 = 500 / PRECISION;
+        const BURST_DURATION: u64 = 1000 / PRECISION;
 
         // The transaction size must be at least 16 bytes to ensure all txs are different.
         if self.size < 9 {
@@ -142,6 +142,7 @@ impl Client {
         // Submit all transactions.
         let burst = self.rate / PRECISION;
         let tx = BytesMut::with_capacity(self.size + 64); // + 64 for signatures
+        let mut tx_num:u64 = 0;
         let mut counter = 0;
         let mut r :u64 = rand::thread_rng().gen();
         let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
@@ -152,7 +153,6 @@ impl Client {
         // Spawn a task to read from channel and send transactions
         tokio::spawn(async move {
             while let Some(message) = channel_rx.recv().await {
-                info!("Sent");
                 //Note: Does not sign transactions. Transaction id-s are not unique w.r.t to content.
                 if let Err(e) = transport.send(message).await { //Uses TCP connection to send request to assigned worker. Note: Optimistically only sending to one worker.
                     warn!("Failed to send transaction: {}", e);
@@ -165,15 +165,16 @@ impl Client {
         info!("Start sending transactions");
         'main: loop {
             interval.as_mut().tick().await;
-            let now = Instant::now();
-
             let mut tx = tx.clone();     
             let counter_copy = counter.clone();
             let mut r_copy = r.clone();
             let size = self.size;
             let mut sig_copy = self.signature_service.clone();
             let channel_tx = channel_tx.clone();
+            tx_num += burst;
+            let tx_num_copy = tx_num.clone();
             tokio::spawn(async move {
+                let now = Instant::now();
                 for x in 0..burst {
                     let msg = if x == counter_copy % burst {
                         // NOTE: This log entry is used to compute performance.
@@ -183,7 +184,6 @@ impl Client {
                         tx.put_u64(counter_copy); // This counter identifies the tx.
                         tx.resize(size, 0u8);
 
-                        
                         for b in sign(&mut sig_copy, &tx).await {
                             tx.put_u8(b);
                         }
@@ -203,15 +203,15 @@ impl Client {
                     };
                     if let Err(e) = channel_tx.send(msg).await {
                         warn!("Failed to send message to sender: {}", e);
+                        info!("Sent {} transactions", tx_num_copy - burst + x);
                         std::process::exit(0);
                     }
                 }
+                if now.elapsed().as_millis() > BURST_DURATION as u128 {
+                    // NOTE: This log entry is used to compute performance.
+                    warn!("Transaction rate too high for this client");
+                }
             });
-            
-            if now.elapsed().as_millis() > BURST_DURATION as u128 {
-                // NOTE: This log entry is used to compute performance.
-                warn!("Transaction rate too high for this client");
-            }
 
             r += burst;
             counter += 1;
