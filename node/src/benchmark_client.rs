@@ -142,7 +142,6 @@ impl Client {
         // Submit all transactions.
         let burst = self.rate / PRECISION;
         let tx = BytesMut::with_capacity(self.size + 64); // + 64 for signatures
-        let mut tx_num:u64 = 0;
         let mut counter = 0;
         let mut r :u64 = rand::thread_rng().gen();
         let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
@@ -152,10 +151,13 @@ impl Client {
 
         // Spawn a task to read from channel and send transactions
         tokio::spawn(async move {
+            let mut tx_num:u64 = 0;
             while let Some(message) = channel_rx.recv().await {
+                tx_num += 1;
                 //Note: Does not sign transactions. Transaction id-s are not unique w.r.t to content.
                 if let Err(e) = transport.send(message).await { //Uses TCP connection to send request to assigned worker. Note: Optimistically only sending to one worker.
                     warn!("Failed to send transaction: {}", e);
+                    info!("Sent {} transactions", tx_num);
                     return;
                 }
             }
@@ -171,8 +173,6 @@ impl Client {
             let size = self.size;
             let mut sig_copy = self.signature_service.clone();
             let channel_tx = channel_tx.clone();
-            tx_num += burst;
-            let tx_num_copy = tx_num.clone();
             tokio::spawn(async move {
                 let now = Instant::now();
                 for x in 0..burst {
@@ -203,7 +203,6 @@ impl Client {
                     };
                     if let Err(e) = channel_tx.send(msg).await {
                         warn!("Failed to send message to sender: {}", e);
-                        info!("Sent {} transactions", tx_num_copy - burst + x);
                         std::process::exit(0);
                     }
                 }
