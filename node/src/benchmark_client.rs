@@ -121,7 +121,7 @@ async fn sign(signature_service: &mut SignatureService, tx: &BytesMut) -> [u8; 6
 
 impl Client {
     pub async fn send(&mut self) -> Result<()> {
-        const PRECISION: u64 = 20; // Sample precision.
+        const PRECISION: u64 = 10; // Sample precision.
         const BURST_DURATION: u64 = 1000 / PRECISION;
 
         // The transaction size must be at least 16 bytes to ensure all txs are different.
