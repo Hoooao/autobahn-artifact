@@ -155,11 +155,11 @@ impl Client {
             let mut tx_num:u64 = 0;
             while let Some(message) = channel_rx.recv().await {
                 tx_num += 1;
-                if let Err(e) = transport.send(message).await { //Uses TCP connection to send request to assigned worker. Note: Optimistically only sending to one worker.
-                    warn!("Failed to send transaction: {}", e);
-                    info!("Sent {} transactions", tx_num);
-                    return;
-                }
+                // if let Err(e) = transport.send(message).await { //Uses TCP connection to send request to assigned worker. Note: Optimistically only sending to one worker.
+                //     warn!("Failed to send transaction: {}", e);
+                //     info!("Sent {} transactions", tx_num);
+                //     return;
+                // }
                 if tx_num % 1000 == 0 {
                     info!("Sent {} transactions", tx_num);
                 }

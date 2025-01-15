@@ -128,9 +128,9 @@ def remote(ctx, debug=True):
         'workers': 1,
         'co-locate': False,
         # 3_000, 10_000, 15_000, 30_000, 60_000, 150_000, 300_000, 400_000, 500_000
-        'rate': [ 150_000],
+        'rate': [ 300_000],
         'tx_size': 512,
-        'duration': 15,
+        'duration': 22,
         'runs': 1,
 
         # Unused
