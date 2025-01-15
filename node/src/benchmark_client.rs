@@ -146,7 +146,7 @@ impl Client {
         let mut r :u64 = rand::thread_rng().gen();
         let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
         // Hao: half the sleep time to enable more on going threads...
-        let interval = interval(Duration::from_millis(BURST_DURATION/2));
+        let interval = interval(Duration::from_millis(BURST_DURATION/4));
         tokio::pin!(interval);
 
 
