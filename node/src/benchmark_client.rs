@@ -137,7 +137,7 @@ impl Client {
             .context(format!("failed to connect to {}", self.target))?;
 
         // Create a channel so we can sign transactions concurrently and send from a single task
-        let (channel_tx, mut channel_rx) = mpsc::channel(100);
+        // let (channel_tx, mut channel_rx) = mpsc::channel(100);
 
         // Submit all transactions.
         let burst = self.rate / PRECISION;
@@ -151,20 +151,20 @@ impl Client {
 
 
         // Spawn a task to read from channel and send signed transactions
-        tokio::spawn(async move {
-            let mut tx_num:u64 = 0;
-            while let Some(message) = channel_rx.recv().await {
-                tx_num += 1;
-                // if let Err(e) = transport.send(message).await { //Uses TCP connection to send request to assigned worker. Note: Optimistically only sending to one worker.
-                //     warn!("Failed to send transaction: {}", e);
-                //     info!("Sent {} transactions", tx_num);
-                //     return;
-                // }
-                if tx_num % 1000 == 0 {
-                    info!("Sent {} transactions", tx_num);
-                }
-            }
-        });
+        // tokio::spawn(async move {
+        //     let mut tx_num:u64 = 0;
+        //     while let Some(message) = channel_rx.recv().await {
+        //         tx_num += 1;
+        //         // if let Err(e) = transport.send(message).await { //Uses TCP connection to send request to assigned worker. Note: Optimistically only sending to one worker.
+        //         //     warn!("Failed to send transaction: {}", e);
+        //         //     info!("Sent {} transactions", tx_num);
+        //         //     return;
+        //         // }
+        //         if tx_num % 1000 == 0 {
+        //             info!("Sent {} transactions", tx_num);
+        //         }
+        //     }
+        // });
 
         // NOTE: This log entry is used to compute performance.
         info!("Start sending transactions");
