@@ -221,7 +221,7 @@ impl BatchMaker {
                     }
                     Err(e) => {
                         debug!("Failed to verify client transaction {}", e);
-                        return;
+                        //return;
                     }
                 }
             }
