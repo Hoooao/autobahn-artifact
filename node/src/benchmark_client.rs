@@ -141,7 +141,7 @@ impl Client {
 
         // Submit all transactions.
         let burst = self.rate / PRECISION;
-        let tx = BytesMut::with_capacity(self.size); // + 64 for signatures
+        let tx = BytesMut::with_capacity(self.size + 64); // + 64 for signatures
         let mut counter = 0;
         let mut r :u64 = rand::thread_rng().gen();
         let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
@@ -184,9 +184,9 @@ impl Client {
                         tx.put_u64(counter_copy); // This counter identifies the tx.
                         tx.resize(size, 0u8);
 
-                        // for b in sign(&mut sig_copy, &tx).await {
-                        //     tx.put_u8(b);
-                        // }
+                        for b in sign(&mut sig_copy, &tx).await {
+                            tx.put_u8(b);
+                        }
 
                         tx.split().freeze()
                     } else {
