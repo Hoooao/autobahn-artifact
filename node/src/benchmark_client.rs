@@ -187,9 +187,9 @@ impl Client {
                         tx.put_u64(counter_copy); // This counter identifies the tx.
                         tx.resize(size, 0u8);
 
-                        // for b in sign(&mut sig_copy, &tx).await {
-                        //     tx.put_u8(b);
-                        // }
+                        for b in sign(&mut sig_copy, &tx).await {
+                            tx.put_u8(b);
+                        }
 
                         tx.split().freeze()
                     } else {
@@ -198,9 +198,9 @@ impl Client {
                         tx.put_u64(r_copy); // Ensures all clients send different txs.
                         tx.resize(size, 0u8);
 
-                        // for b in sign(&mut sig_copy, &tx).await {
-                        //     tx.put_u8(b);
-                        // }
+                        for b in sign(&mut sig_copy, &tx).await {
+                            tx.put_u8(b);
+                        }
 
                         tx.split().freeze()
                     };
