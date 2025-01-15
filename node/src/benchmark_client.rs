@@ -204,10 +204,11 @@ impl Client {
 
                         tx.split().freeze()
                     };
-                    if let Err(e) = channel_tx.send(msg).await {
-                        warn!("Failed to send message to sender: {}", e);
-                        std::process::exit(0);
-                    }
+                    // see cli sending rate without channel
+                    // if let Err(e) = channel_tx.send(msg).await {
+                    //     warn!("Failed to send message to sender: {}", e);
+                    //     std::process::exit(0);
+                    // }
                 }
                 if now.elapsed().as_millis() > BURST_DURATION as u128 {
                     // NOTE: This log entry is used to compute performance.
