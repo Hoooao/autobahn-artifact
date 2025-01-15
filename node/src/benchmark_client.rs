@@ -175,7 +175,7 @@ impl Client {
             let mut r_copy = r.clone();
             let size = self.size;
             let mut sig_copy = self.signature_service.clone();
-            let channel_tx = channel_tx.clone();
+            // let channel_tx = channel_tx.clone();
             tokio::spawn(async move {
                 let now = Instant::now();
                 for x in 0..burst {
