@@ -178,6 +178,7 @@ impl Client {
             let channel_tx = channel_tx.clone();
             tokio::spawn(async move {
                 let now = Instant::now();
+                info!("Sending burst of {} transactions starts at {}", burst, now.as_millis());
                 for x in 0..burst {
                     let msg = if x == counter_copy % burst {
                         // NOTE: This log entry is used to compute performance.
@@ -214,6 +215,7 @@ impl Client {
                     // NOTE: This log entry is used to compute performance.
                     warn!("Transaction rate too high for this client");
                 }
+                info!("Sending burst of {} transactions finished at {}", burst, now.as_millis());
             });
 
             r += burst;
