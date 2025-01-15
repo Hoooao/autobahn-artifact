@@ -160,7 +160,7 @@ impl Client {
                 //     info!("Sent {} transactions", tx_num);
                 //     return;
                 // }
-                if tx_num % 1000 == 0 {
+                if tx_num % 20000 == 0 {
                     info!("Sent {} transactions", tx_num);
                 }
             }
