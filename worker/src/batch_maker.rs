@@ -19,6 +19,7 @@ use log::debug;
 use log::info;
 use network::{ReliableSender, SimpleSender};
 use primary::{Primary, PrimaryWorkerMessage, WorkerPrimaryMessage};
+use tokio::sync::mpsc;
 use std::collections::{HashSet, VecDeque};
 //#[cfg(feature = "benchmark")]
 
@@ -64,8 +65,6 @@ pub struct BatchMaker {
     batch_size: usize,
     /// The maximum delay after which to seal the batch (in ms).
     max_batch_delay: u64,
-    /// Channel to receive transactions from the network.
-    rx_transaction: Receiver<Transaction>,
    
     //tx_message: Sender<QuorumWaiterMessage>,  /// Output channel to deliver sealed batches to the `QuorumWaiter`.
     tx_batch: Sender<Vec<u8>>,   // channel to forward batch digest to processor in order for primary to propose.
@@ -130,7 +129,6 @@ impl BatchMaker {
             Self {
                 batch_size,
                 max_batch_delay,
-                rx_transaction,
                 tx_message, //previously forwarded batch to Quorum_waiter; now skipping this step.
                 tx_batch,  
                 workers_addresses,
@@ -152,13 +150,13 @@ impl BatchMaker {
                 name,
                 async_timer_futures: FuturesUnordered::new(),
             }
-            .run()
+            .run(rx_transaction)
             .await;
         });
     }
 
     /// Main loop receiving incoming transactions and creating batches.
-    async fn run(&mut self) {
+    async fn run(&mut self, rx_transaction: Receiver<Transaction>) {
         let timer = sleep(Duration::from_millis(self.max_batch_delay));
         tokio::pin!(timer);
         
@@ -203,6 +201,34 @@ impl BatchMaker {
         }
         
         
+        let (channel_tx, mut channel_rx) = mpsc::channel(100);
+        let name = self.name.clone();
+        let mut rx_transaction = rx_transaction;
+
+        // Spawn a task to read from clients and verify signed transactions
+        tokio::spawn(async move {
+            while let Some(transaction) = rx_transaction.recv().await {
+                let (msg, sig) = transaction.split_at(transaction.len() - 64); 
+
+                let digest = msg.digest();
+
+                let signature = ed25519::signature::Signature::from_bytes(sig).expect("Failed to create sig");
+                let key = ed25519_dalek::PublicKey::from_bytes(&name.0).expect("Failed to load pub key");
+
+                match key.verify_strict(&digest.0, &signature) {
+                    Ok(()) => {
+                        channel_tx.send(transaction).await.expect("Failed to send transaction");
+                    }
+                    Err(e) => {
+                        debug!("Failed to verify client transaction {}", e);
+                        return;
+                    }
+                }
+            }
+        });
+
+
+
         /*let timer1 = sleep(Duration::from_secs(10));
         tokio::pin!(timer1);
         let timer2 = sleep(Duration::from_secs(30));
@@ -212,38 +238,20 @@ impl BatchMaker {
         loop {
             tokio::select! {
                 // Assemble client transactions into batches of preset size.
-                Some(transaction) = self.rx_transaction.recv() => {
+                Some(transaction) = channel_rx.recv() => {
                     // debug!("{:?}", transaction.len());
                     // debug!("{:?}", self.name);
+                    // debug!("Client transaction verified");
+                    self.current_batch_size += transaction.len();
+                    self.current_batch.push(transaction.to_vec());
+                    if self.current_batch_size >= self.batch_size {
+                        self.seal().await;
 
-                    let (msg, sig) = transaction.split_at(transaction.len() - 64); 
+                        debug!("batch ready it took {:?} ms", current_time.elapsed().as_millis());
+                        current_time = Instant::now();
 
-                    let digest = msg.digest();
-
-
-                    let signature = ed25519::signature::Signature::from_bytes(sig).expect("Failed to create sig");
-                    let key = ed25519_dalek::PublicKey::from_bytes(&self.name.0).expect("Failed to load pub key");
-
-                    match key.verify_strict(&digest.0, &signature) {
-                        Ok(()) => {
-                            // debug!("Client transaction verified");
-                            self.current_batch_size += msg.len();
-                            self.current_batch.push(msg.to_vec());
-                            if self.current_batch_size >= self.batch_size {
-                                self.seal().await;
-        
-                                debug!("batch ready it took {:?} ms", current_time.elapsed().as_millis());
-                                current_time = Instant::now();
-        
-                                timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
-                            }
-                        }
-                        Err(e) => {
-                            debug!("Failed to verify client transaction {}", e);
-                            return;
-                        }
+                        timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
                     }
-
                 },
 
                 // If the timer triggers, seal the batch even if it contains few transactions.
@@ -261,24 +269,6 @@ impl BatchMaker {
                     self.during_simulated_asynchrony = !self.during_simulated_asynchrony;
                     debug!("partition queue size is {:?}", self.partition_queue.len());
                 },
-
-                // If the timer triggers, seal the batch even if it contains few transactions.
-                /*() = &mut timer1 => {
-                    debug!("BatchMaker: partition delay timer 1 triggered");
-                    self.during_simulated_asynchrony = true;
-                    timer1.as_mut().reset(Instant::now() + Duration::from_secs(100));
-                },
-
-                // If the timer triggers, seal the batch even if it contains few transactions.
-                () = &mut timer2 => {
-                    debug!("BatchMaker: partition delay timer 2 triggered");
-                    debug!("partition queue size is {:?}", self.partition_queue.len());
-                    self.during_simulated_asynchrony = false;
-                    timer2.as_mut().reset(Instant::now() + Duration::from_secs(100));
-                },*/
-
-
-
             }
 
             // Give the change to schedule other tasks.

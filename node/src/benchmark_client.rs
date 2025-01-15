@@ -149,12 +149,11 @@ impl Client {
         tokio::pin!(interval);
 
 
-        // Spawn a task to read from channel and send transactions
+        // Spawn a task to read from channel and send signed transactions
         tokio::spawn(async move {
             let mut tx_num:u64 = 0;
             while let Some(message) = channel_rx.recv().await {
                 tx_num += 1;
-                //Note: Does not sign transactions. Transaction id-s are not unique w.r.t to content.
                 if let Err(e) = transport.send(message).await { //Uses TCP connection to send request to assigned worker. Note: Optimistically only sending to one worker.
                     warn!("Failed to send transaction: {}", e);
                     info!("Sent {} transactions", tx_num);
