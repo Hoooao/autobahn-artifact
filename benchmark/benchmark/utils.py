@@ -59,6 +59,11 @@ class PathMaker:
         assert isinstance(i, int) and i >= 0
         assert isinstance(j, int) and i >= 0
         return join(PathMaker.logs_path(), f'client-{i}-{j}.log')
+    @staticmethod
+    def client_log_file_for_shards(i, j, s):
+        assert isinstance(i, int) and i >= 0
+        assert isinstance(j, int) and i >= 0
+        return join(PathMaker.logs_path(), f'client-{i}-{j}-{s}.log')
 
     @staticmethod
     def results_path():

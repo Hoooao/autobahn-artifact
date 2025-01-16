@@ -159,6 +159,9 @@ impl Client {
                     info!("Sent {} transactions", tx_num);
                     return;
                 }
+                if tx_num % 10000 == 0 {
+                    info!("Sent {} transactions", tx_num);
+                }
             }
         });
 
