@@ -96,7 +96,7 @@ async fn main() -> Result<()> {
     };
 
     // Wait for all nodes to be online and synchronized.
-    // client.wait().await;
+    client.wait().await;
 
     // Start the benchmark.
     client.send().await.context("Failed to submit transactions")
@@ -121,7 +121,7 @@ async fn sign(signature_service: &mut SignatureService, tx: &BytesMut) -> [u8; 6
 
 impl Client {
     pub async fn send(&mut self) -> Result<()> {
-        const PRECISION: u64 = 20; // Sample precision.
+        const PRECISION: u64 = 10; // Sample precision.
         const BURST_DURATION: u64 = 1000 / PRECISION;
 
         // The transaction size must be at least 16 bytes to ensure all txs are different.
@@ -132,9 +132,9 @@ impl Client {
         }
 
         // Connect to the mempool.
-        // let stream = TcpStream::connect(self.target)
-        //     .await
-        //     .context(format!("failed to connect to {}", self.target))?;
+        let stream = TcpStream::connect(self.target)
+            .await
+            .context(format!("failed to connect to {}", self.target))?;
 
         // Create a channel so we can sign transactions concurrently and send from a single task
         let (channel_tx, mut channel_rx) = mpsc::channel(100);
@@ -144,24 +144,20 @@ impl Client {
         let tx = BytesMut::with_capacity(self.size + 64); // + 64 for signatures
         let mut counter = 0;
         let mut r :u64 = rand::thread_rng().gen();
-        //let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
-        // Hao: half the sleep time to enable more on going threads...
+        let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
         let interval = interval(Duration::from_millis(BURST_DURATION));
         tokio::pin!(interval);
 
 
-        //Spawn a task to read from channel and send signed transactions
+        // Spawn a task to read from channel and send signed transactions
         tokio::spawn(async move {
             let mut tx_num:u64 = 0;
             while let Some(message) = channel_rx.recv().await {
                 tx_num += 1;
-                // if let Err(e) = transport.send(message).await { //Uses TCP connection to send request to assigned worker. Note: Optimistically only sending to one worker.
-                //     warn!("Failed to send transaction: {}", e);
-                //     info!("Sent {} transactions", tx_num);
-                //     return;
-                // }
-                if tx_num % 20000 == 0 {
+                if let Err(e) = transport.send(message).await { //Uses TCP connection to send request to assigned worker. Note: Optimistically only sending to one worker.
+                    warn!("Failed to send transaction: {}", e);
                     info!("Sent {} transactions", tx_num);
+                    return;
                 }
             }
         });
@@ -178,7 +174,6 @@ impl Client {
             let channel_tx = channel_tx.clone();
             tokio::spawn(async move {
                 let now = Instant::now();
-                info!("Sending burst of {} transactions starts at {}", burst, now.as_millis());
                 for x in 0..burst {
                     let msg = if x == counter_copy % burst {
                         // NOTE: This log entry is used to compute performance.
@@ -205,7 +200,6 @@ impl Client {
 
                         tx.split().freeze()
                     };
-                    // see cli sending rate without channel
                     if let Err(e) = channel_tx.send(msg).await {
                         warn!("Failed to send message to sender: {}", e);
                         std::process::exit(0);
@@ -215,7 +209,6 @@ impl Client {
                     // NOTE: This log entry is used to compute performance.
                     warn!("Transaction rate too high for this client");
                 }
-                info!("Sending burst of {} transactions finished at {}", burst, now.as_millis());
             });
 
             r += burst;

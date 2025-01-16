@@ -286,17 +286,20 @@ class Bench:
         key_files = [PathMaker.key_file(i) for i in range(len(cli_hosts))]
         for i, addresses in enumerate(workers_addresses):
             for (id, address) in addresses:
-                cmd = CommandMaker.run_client(
-                    address,
-                    bench_parameters.tx_size,
-                    rate_share,
-                    key_files[i],
-                    [x for y in workers_addresses for _, x in y],
-                    debug=debug
-                )
-                log_file = PathMaker.client_log_file(i, id)
-                print("Running client on host: ", cli_hosts[i])
-                self._background_run(cli_hosts[i], cmd, log_file)
+                sharded_rate = rate_share / bench_parameters.client_shards
+                for s in range(bench_parameters.client_shards):
+                    cmd = CommandMaker.run_client(
+                        address,
+                        bench_parameters.tx_size,
+                        sharded_rate,
+                        key_files[i],
+                        [x for y in workers_addresses for _, x in y],
+                        debug=debug
+                    )
+                    suffix = f'_{s}' if s > 1 else f''
+                    log_file = PathMaker.client_log_file(i, id) + suffix
+                    print("Running client on host: ", cli_hosts[i])
+                    self._background_run(cli_hosts[i], cmd, log_file)
 
         # Run the primaries (except the faulty ones).
         Print.info('Booting primaries...')
