@@ -4,6 +4,7 @@ use bytes::BufMut as _;
 use bytes::BytesMut;
 use clap::{crate_name, crate_version, App, AppSettings};
 use env_logger::Env;
+use futures::channel;
 use futures::future::join_all;
 use futures::sink::SinkExt as _;
 use log::{info, warn};
@@ -12,6 +13,7 @@ use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio::time::{interval, sleep, Duration, Instant};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use tokio::sync::mpsc;
 
 use crypto::SignatureService;
 use crypto::Hash;
@@ -80,7 +82,6 @@ async fn main() -> Result<()> {
 
 
     let secret = KeyPair::import(key_file).context("Failed to load the node's keypair")?;
-    let name = secret.name;
     let secret_key = secret.secret;
 
     info!("{:?}", secret.name);
@@ -102,6 +103,19 @@ async fn main() -> Result<()> {
 
     // Start the benchmark.
     client.send().await.context("Failed to submit transactions")
+    // let mut tx = BytesMut::with_capacity(size + 64); // + 64 for signatures
+    // let mut counter = 0;
+    // let now = Instant::now();
+    // for counter in 0..10000 {
+    //     tx.put_u8(0u8); // Sample txs start with 0.
+    //     tx.put_u64(counter); // This counter identifies the tx.
+    //     tx.resize(size, 0u8);
+    //     tx.extend_from_slice(&sign(&mut signature_service, &tx).await);
+    //     tx.split().freeze();
+    // }
+    // let elapsed = now.elapsed().as_secs_f64();
+    // info!("Time taken to sign 10000 transactions: {}, rate {}", elapsed, (10000 as f64)/elapsed);
+    // Ok(())
 }
 
 struct Client {
@@ -113,15 +127,15 @@ struct Client {
     signature_service: SignatureService,
 }
 
-impl Client {
 
-    async fn sign(&mut self, tx: &BytesMut) -> [u8; 64]
+async fn sign(signature_service: &mut SignatureService, tx: &BytesMut) -> [u8; 64]
     {
         let digest = tx.as_ref().digest();
-        let signature = self.signature_service.request_signature(digest).await;
+    let signature = signature_service.request_signature(digest).await;
         signature.flatten()
     }
 
+impl Client {
     pub async fn send(&mut self) -> Result<()> {
         const PRECISION: u64 = 20; // Sample precision.
         const BURST_DURATION: u64 = 1000 / PRECISION;
@@ -138,61 +152,74 @@ impl Client {
             .await
             .context(format!("failed to connect to {}", self.target))?;
 
+        // Create a channel so we can sign transactions concurrently and send from a single task
+        let (channel_tx, mut channel_rx) = mpsc::channel(100);
         // Submit all transactions.
         let burst = self.rate / PRECISION;
-        let mut tx = BytesMut::with_capacity(self.size + 64); // + 64 for signatures
+        let tx = BytesMut::with_capacity(self.size + 64); // + 64 for signatures
         let mut counter = 0;
-        let mut r = rand::thread_rng().gen();
+        let mut r :u64 = rand::thread_rng().gen();
         let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
         let interval = interval(Duration::from_millis(BURST_DURATION));
         tokio::pin!(interval);
 
+        // Spawn a task to read from channel and send signed transactions
+        tokio::spawn(async move {
+            while let Some(message) = channel_rx.recv().await {
+                if let Err(e) = transport.send(message).await { //Uses TCP connection to send request to assigned worker. Note: Optimistically only sending to one worker.
+                    warn!("Failed to send transaction: {}", e);
+                    return;
+                }
+            }
+        });
         // NOTE: This log entry is used to compute performance.
         info!("Start sending transactions");
-        let mut tx_num = 0;
+
         'main: loop {
             interval.as_mut().tick().await;
             let now = Instant::now();
             
+            let mut tx = tx.clone();     
+            let counter_copy = counter.clone();
+            let mut r_copy = r.clone();
+            let size = self.size;
+            let mut sig_copy = self.signature_service.clone();
+            let channel_tx = channel_tx.clone();
+            tokio::spawn(async move {
             for x in 0..burst {
-                let bytes = if x == counter % burst {
+                    let msg = if x == counter_copy % burst {
                     // NOTE: This log entry is used to compute performance.
-                    info!("Sending sample transaction {}", counter);
+                        info!("Sending sample transaction {}", counter_copy);
 
                     tx.put_u8(0u8); // Sample txs start with 0.
-                    tx.put_u64(counter); // This counter identifies the tx.
-                    tx.resize(self.size, 0u8);
+                        tx.put_u64(counter_copy); // This counter identifies the tx.
+                        tx.resize(size, 0u8);
 
                     
-                    for b in self.sign(&tx).await {
-                        tx.put_u8(b);
-                    }
+                        tx.extend_from_slice(&sign(&mut sig_copy, &tx).await);
 
                     tx.split().freeze()
                 } else {
-                    r += 1;
+                        r_copy += 1;
                     tx.put_u8(1u8); // Standard txs start with 1.
-                    tx.put_u64(r); // Ensures all clients send different txs.
-                    tx.resize(self.size, 0u8);
+                        tx.put_u64(r_copy); // Ensures all clients send different txs.
+                        tx.resize(size, 0u8);
 
-                    for b in self.sign(&tx).await {
-                        tx.put_u8(b);
-                    }
+                        tx.extend_from_slice(&sign(&mut sig_copy, &tx).await);
 
                     tx.split().freeze()
                 };
-                tx_num += 1;
-                //Note: Does not sign transactions. Transaction id-s are not unique w.r.t to content.
-                if let Err(e) = transport.send(bytes).await { //Uses TCP connection to send request to assigned worker. Note: Optimistically only sending to one worker.
-                    warn!("Failed to send transaction: {}", e);
-                    info!("Sent {} transactions", tx_num);
-                    break 'main;
+
+                    
+                    channel_tx.send(msg).await.unwrap();
+
                 }
-            }
+            });
             if now.elapsed().as_millis() > BURST_DURATION as u128 {
                 // NOTE: This log entry is used to compute performance.
                 warn!("Transaction rate too high for this client");
             }
+            r += burst;
             counter += 1;
         }
         Ok(())
