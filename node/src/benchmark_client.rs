@@ -185,36 +185,33 @@ impl Client {
             let size = self.size;
             let mut sig_copy = self.signature_service.clone();
             let channel_tx = channel_tx.clone();
-            tokio::spawn(async move {
             for x in 0..burst {
-                    let msg = if x == counter_copy % burst {
-                    // NOTE: This log entry is used to compute performance.
-                        info!("Sending sample transaction {}", counter_copy);
+                let msg = if x == counter_copy % burst {
+                // NOTE: This log entry is used to compute performance.
+                    info!("Sending sample transaction {}", counter_copy);
 
-                    tx.put_u8(0u8); // Sample txs start with 0.
-                        tx.put_u64(counter_copy); // This counter identifies the tx.
-                        tx.resize(size, 0u8);
+                tx.put_u8(0u8); // Sample txs start with 0.
+                    tx.put_u64(counter_copy); // This counter identifies the tx.
+                    tx.resize(size, 0u8);
 
-                    
-                        tx.extend_from_slice(&sign(&mut sig_copy, &tx).await);
+                
+                    tx.extend_from_slice(&sign(&mut sig_copy, &tx).await);
 
-                    tx.split().freeze()
-                } else {
-                        r_copy += 1;
-                    tx.put_u8(1u8); // Standard txs start with 1.
-                        tx.put_u64(r_copy); // Ensures all clients send different txs.
-                        tx.resize(size, 0u8);
+                tx.split().freeze()
+            } else {
+                    r_copy += 1;
+                tx.put_u8(1u8); // Standard txs start with 1.
+                    tx.put_u64(r_copy); // Ensures all clients send different txs.
+                    tx.resize(size, 0u8);
 
-                        tx.extend_from_slice(&sign(&mut sig_copy, &tx).await);
+                    tx.extend_from_slice(&sign(&mut sig_copy, &tx).await);
 
-                    tx.split().freeze()
-                };
+                tx.split().freeze()
+            };
+            channel_tx.send(msg).await.unwrap();
 
-                    
-                    channel_tx.send(msg).await.unwrap();
-
-                }
-            });
+        }
+            
             if now.elapsed().as_millis() > BURST_DURATION as u128 {
                 // NOTE: This log entry is used to compute performance.
                 warn!("Transaction rate too high for this client");
