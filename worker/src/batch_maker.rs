@@ -221,7 +221,7 @@ impl BatchMaker {
                     }
                     Err(e) => {
                         debug!("Failed to verify client transaction {}", e);
-                        //return;
+                        return;
                     }
                 }
             }
@@ -293,7 +293,7 @@ impl BatchMaker {
         // Serialize the batch.
         self.current_batch_size = 0;
         let batch: Vec<_> = self.current_batch.drain(..).collect();
-        let message = WorkerMessage::Batch(batch);
+        let message = WorkerMessage::Batch(self.name, batch);
         let serialized = bincode::serialize(&message).expect("Failed to serialize our own batch");
 
         #[cfg(feature = "benchmark")]
