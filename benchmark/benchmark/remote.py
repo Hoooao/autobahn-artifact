@@ -289,17 +289,22 @@ class Bench:
         key_files = [PathMaker.key_file(i) for i in range(len(cli_hosts))]
         for i, addresses in enumerate(workers_addresses):
             for (id, address) in addresses:
-                cmd = CommandMaker.run_client(
-                    address,
-                    bench_parameters.tx_size,
-                    rate_share,
-                    key_files[i],
-                    [x for y in workers_addresses for _, x in y],
-                    debug=debug
-                )
-                log_file = PathMaker.client_log_file(i, id)
-                print("Running client on host: ", cli_hosts[i])
-                self._background_run(cli_hosts[i], cmd, log_file)
+                sharded_rate =  ceil(rate_share / bench_parameters.client_shards)
+                for s in range(bench_parameters.client_shards):
+                    cmd = CommandMaker.run_client(
+                        address,
+                        bench_parameters.tx_size,
+                        sharded_rate,
+                        key_files[i],
+                        [x for y in workers_addresses for _, x in y],
+                        debug=debug
+                    )
+                    if s == 0:
+                        log_file = PathMaker.client_log_file(i, id) 
+                    else:
+                        log_file = PathMaker.client_log_file_for_shards(i, id, s)
+                    print("Running client on host: ", cli_hosts[i])
+                    self._background_run(cli_hosts[i], cmd, log_file)
 
         # Run the primaries (except the faulty ones).
         Print.info('Booting primaries...')
@@ -412,7 +417,7 @@ class Bench:
         #    log_file = PathMaker.primary_log_file(i)
         #    self._background_run(host, cmd, log_file)
 
-    def _logs(self, committee, faults, collocate=True, cli_hosts=None):
+    def _logs(self, committee, faults, collocate=True, cli_hosts=None, shards = 1):
         # Delete local logs (if any).
         cmd = CommandMaker.clean_logs()
         subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
@@ -425,6 +430,8 @@ class Bench:
                 host = Committee.ip(address)
                 c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
                 if collocate:
+                    for ind in range(1, shards):
+                        c.run(f'cat {PathMaker.client_log_file_for_shards(i,id,ind)} >> {PathMaker.client_log_file(i, id)}')
                     c.get(
                     PathMaker.client_log_file(i, id), 
                     local=PathMaker.client_log_file(i, id)
@@ -447,8 +454,8 @@ class Bench:
             progress = progress_bar(cli_hosts, prefix='Downloading uncollocated Client logs:')
             for i, host in enumerate(progress):
                 c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
-                for ind in range(1, 1):
-                    c.run(f'cat {PathMaker.client_log_file(i, 0)}_{ind} >> {PathMaker.client_log_file(i, 0)}')
+                for ind in range(1, shards):
+                    c.run(f'cat {PathMaker.client_log_file_for_shards(i,0,ind)} >> {PathMaker.client_log_file(i, 0)}')
                 c.get(
                     PathMaker.client_log_file(i, 0), 
                     local=PathMaker.client_log_file(i, 0)
@@ -508,7 +515,7 @@ class Bench:
                         )
 
                         faults = bench_parameters.faults
-                        logger = self._logs(committee_copy, faults, bench_parameters.collocate, selected_hosts[int(len(selected_hosts)/2):])
+                        logger = self._logs(committee_copy, faults, bench_parameters.collocate, selected_hosts[int(len(selected_hosts)/2):], bench_parameters.client_shards)
                         logger.print(PathMaker.result_file(
                             faults,
                             n, 

@@ -218,6 +218,7 @@ class BenchParameters:
             self.rate = [int(x) for x in rate]
 
             self.workers = int(json['workers'])
+            self.client_shards = int(json['client_shards'])
 
             if 'co-locate' in json:
                 self.collocate = bool(json['co-locate'])
