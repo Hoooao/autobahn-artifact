@@ -276,8 +276,9 @@ class Bench:
         else:
             cli_hosts = hosts
         # Kill any potentially unfinished run and delete logs.
-        self.kill(hosts=hosts, delete_logs=True)
         self.kill(hosts=cli_hosts, delete_logs=True)
+        self.kill(hosts=hosts, delete_logs=True)
+        
 
         # Run the clients (they will wait for the nodes to be ready).
         # Filter all faulty nodes from the client addresses (or they will wait
@@ -352,6 +353,7 @@ class Bench:
             #    self._delete_partition(bench_parameters, committee, faults)
 
             sleep(ceil(duration / 20))
+        self.kill(hosts=cli_hosts, delete_logs=False)
         self.kill(hosts=hosts, delete_logs=False)
 
     def _simulate_partition(self, bench_parameters, committee, faults):
