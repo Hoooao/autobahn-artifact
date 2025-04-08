@@ -101,7 +101,6 @@ impl Primary {
                 tx_primary_messages,
                 tx_cert_requests,
             },
-            None,
         );
         info!(
             "Primary {} listening to primary messages on {}",
@@ -121,7 +120,6 @@ impl Primary {
                 tx_our_digests,
                 tx_others_digests,
             },
-            None,
         );
         info!(
             "Primary {} listening to workers messages on {}",
@@ -270,14 +268,11 @@ impl MessageHandler for WorkerReceiverHandler {
     ) -> Result<(), Box<dyn Error>> {
         // Deserialize and parse the message.
         match bincode::deserialize(&serialized).map_err(DagError::SerializationError)? {
-            WorkerPrimaryMessage::OurBatch(digest, worker_id) =>{
-                debug!("Primary received a batch from own worker {} with digest {}, sending to proposer", worker_id, digest);
-                self
+            WorkerPrimaryMessage::OurBatch(digest, worker_id) => self
                 .tx_our_digests
                 .send((digest, worker_id))
                 .await
-                .expect("Failed to send workers' digests")
-            },
+                .expect("Failed to send workers' digests"),
             WorkerPrimaryMessage::OthersBatch(digest, worker_id) => self
                 .tx_others_digests
                 .send((digest, worker_id))

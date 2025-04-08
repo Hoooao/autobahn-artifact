@@ -110,7 +110,7 @@ impl BatchMaker {
             Self {
                 batch_size,
                 max_batch_delay,
-                tx_message, //previously forwarded batch to Quorum_waiter; now skipping this step.
+                //tx_message, //previously forwarded batch to Quorum_waiter; now skipping this step.
                 tx_batch,  
                 workers_addresses,
                 current_batch: Batch::with_capacity(batch_size * 2),
