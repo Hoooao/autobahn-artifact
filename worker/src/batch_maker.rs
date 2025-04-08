@@ -219,8 +219,8 @@ impl BatchMaker {
                     self.current_batch.push(transaction.to_vec());
                     if self.current_batch_size >= self.batch_size {
                         self.seal().await;
-                        debug!("batch ready it took {:?} ms", current_time.elapsed().as_millis());
-                        current_time = Instant::now();
+                        // debug!("batch ready it took {:?} ms", current_time.elapsed().as_millis());
+                        // current_time = Instant::now();
                         timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
                     }
                 },
@@ -241,7 +241,7 @@ impl BatchMaker {
                     if !self.current_batch.is_empty() {
                         self.seal().await;
                     }
-                    current_time = Instant::now();
+                    // current_time = Instant::now();
                     timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
                 }
             }
