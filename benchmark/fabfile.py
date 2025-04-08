@@ -125,11 +125,12 @@ def remote(ctx, debug=True):
         'faults': 0,
         'nodes': [4],
         'workers': 1,
-        'co-locate': False,
+        'co-locate': True,
         # 3_000, 5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000
         'rate': [150_000, 300_000, 400_000, 500_000],
         'tx_size': 512,
-        'duration': 35,
+        'client_shards': 1,
+        'duration': 12,
         'runs': 1,
 
         # Unused

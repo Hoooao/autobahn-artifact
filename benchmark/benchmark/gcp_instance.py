@@ -216,6 +216,8 @@ class InstanceManager:
             agg_list = self.client.aggregated_list(request=request)
             for _, response in agg_list:
                 for instance in response.instances:
+                    if "client" in instance.name or "replica" in instance.name:
+                        continue
                     if instance.name == 'autobahn-instance-template':
                         continue
                     ret[instance.name] = instance.network_interfaces[0].access_configs[0].nat_i_p
