@@ -29,7 +29,7 @@ class LocalBench:
         subprocess.run(['tmux', 'new', '-d', '-s', name, cmd], check=True)
         # Hao: offload the rate to 3 worker on same machine.. to satisfy the required rate
         if "client" in command:
-            for i in range(1, 2):
+            for i in range(1, 1):
                 name = splitext(basename(log_file))[0] + f"-offload{i}"
                 cmd = f'{command} --counter {i*1000} 2> {log_file}_{i}'
                 subprocess.run(['tmux', 'new', '-d', '-s', name, cmd], check=True)

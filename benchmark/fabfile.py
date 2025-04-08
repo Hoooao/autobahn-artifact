@@ -127,7 +127,7 @@ def remote(ctx, debug=True):
         'workers': 1,
         'co-locate': False,
         # 3_000, 5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000
-        'rate': [3_000],
+        'rate': [150_000, 300_000, 400_000, 500_000],
         'tx_size': 512,
         'duration': 35,
         'runs': 1,
@@ -141,12 +141,12 @@ def remote(ctx, debug=True):
     node_params = {
         'timeout_delay': 1_000,  # ms
         'header_size': 32,  # bytes
-        'max_header_delay': 5_000,  # ms
+        'max_header_delay': 200,  # ms
         'gc_depth': 50,  # rounds
-        'sync_retry_delay': 5_000,  # ms
+        'sync_retry_delay': 1_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
         'batch_size': 210_000,  # bytes, 400batch for 512 size reqs
-        'max_batch_delay': 20,  # ms
+        'max_batch_delay': 5_000,  # ms
         # hao: took me a while to find out it shoud be False.....
         'simulate_asynchrony': False,
         'asynchrony_type': [3],
@@ -182,7 +182,7 @@ def plot(ctx):
         'workers': [1],
         'collocate': False,
         'tx_size': 512,
-        'max_latency': [500_000]
+        'max_latency': [5_000_000]
     }
     try:
         Ploter.plot(plot_params)
