@@ -121,18 +121,18 @@ def install(ctx):
 @task
 def remote(ctx, debug=True):
     ''' Run benchmarks on AWS '''
-    # Hao: configed according to paper-results/main-graph/Autobahn/bench-0-4-1-True-200000-512.txt
+    # Hao: configed according to experiment-configs/main-graph/autobahn/autobahn-config.txt
     bench_params = {
         'faults': 0,
         'nodes': [4],
         'workers': 1,
-        'co-locate': False,
+        'co-locate': True,
         # ,60000,70000,80000,10000,
-        'rate': [57000,70000],
-        'client_shards': 3,
+        'rate': [57000],
+        'client_shards': 1,
         'tx_size': 512,
-        'duration': 60,
-        'runs': 2,
+        'duration': 15,
+        'runs': 1,
 
         # Unused
         'simulate_partition': False,
@@ -141,21 +141,21 @@ def remote(ctx, debug=True):
         'partition_nodes': 1,
     }
     node_params = {
-        'timeout_delay': 1_000,  # ms
+        'timeout_delay': 5_000,  # ms
         'header_size': 32,  # bytes
-        'max_header_delay': 200,  # ms
+        'max_header_delay': 5_000,  # ms
         'gc_depth': 50,  # rounds
-        'sync_retry_delay': 1_000,  # ms
+        'sync_retry_delay': 5_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
-        'batch_size': 210_000,  # bytes
-        'max_batch_delay': 5_000,  # ms
-        'use_optimistic_tips': False,
+        'batch_size': 500_000,  # bytes Hao: try 210_000?
+        'max_batch_delay': 20,  # ms
+        'use_optimistic_tips': True,
         'use_parallel_proposals': True,
-        'k': 1,
+        'k': 4,
         'use_fast_path': True,
-        'fast_path_timeout': 200,
+        'fast_path_timeout': 5_000,
         'use_ride_share': False,
-        'car_timeout': 2000,
+        'car_timeout': 5_000,
 
         'simulate_asynchrony': False,
         'asynchrony_type': [3],

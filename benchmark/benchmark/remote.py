@@ -99,7 +99,7 @@ class Bench:
             raise BenchError('Failed to kill nodes', FabricError(e))
 
     def _select_hosts(self, bench_parameters):
-        # Collocate the primary and its workers on the same machine.
+        # Collocate the primary and cli on the same machine.
         if bench_parameters.collocate:
             nodes = max(bench_parameters.nodes)
 

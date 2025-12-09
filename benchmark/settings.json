@@ -9,7 +9,7 @@
         "url": "https://github.com/Hoooao/autobahn-artifact.git",
         "branch": "autobahn-blips-auth-single-thread"
     },
-    "project_id": "mythic-veld-419517",
+    "project_id": "bft-project-2",
     "username": "hao",
     "instances": {
         "type": "Hao: these are not used since we do not create new instance",
