@@ -108,12 +108,12 @@ def remote(ctx):
     bench_params = {
         'nodes': [4],
         # ran: 3_000, 5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000
-        'rate': [3_000, 5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 40_000],
+        'rate': [22_000, 24_000, 26_000, 28_000],
         # Hao: 9 is the minimal 
         'tx_size': 512, # 9 + 64 to mimic 64B signature
         'faults': 0,
-        'duration': 30,
-        'runs': 2,
+        'duration': 60,
+        'runs': 1,
         'co-locate': False,
     }
     node_params = {
@@ -132,8 +132,8 @@ def remote(ctx):
         },
         'mempool': {
             'queue_capacity': 10_000_000,
-            'sync_retry_delay': 500_000,
-            'max_payload_size': 29_200,
+            'sync_retry_delay': 5_000,
+            'max_payload_size': 500_000,
             'min_block_delay': 0
         }
     }
@@ -150,8 +150,8 @@ def plot(ctx):
         'nodes': [4],
         'tx_size': 512,
         'faults': [0],
-        'max_latency': [2_000, 5_000],
-        'collocate': True,
+        'max_latency': [2_000],
+        'collocate': False,
     }
     try:
         Ploter.plot(plot_params)

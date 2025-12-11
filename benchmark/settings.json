@@ -14,7 +14,7 @@
         "url": "https://github.com/Hoooao/autobahn-artifact.git",
         "branch": "vanilla-hs-blips"
     },
-    "project_id": "mythic-veld-419517",
+    "project_id": "bft-project-2",
     "username": "hao",
     "instances": {
         "type": "t2d-standard-4",
