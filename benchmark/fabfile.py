@@ -130,11 +130,12 @@ def remote(ctx, debug=True):
         'co-locate': False,
         # ,60000,70000,80000,10000, SPLIT should half the value
         # 5000, 10000, 25000,30000,35000,40000
-        'rate': [25000],
-        'client_shards': 1,
+        # 10000, 20000, 30000, 40000, 50000, 55000, 60000, 70000 NON_SPLIT
+        'rate': [ 55000],
+        'client_shards': 2,
         'tx_size': 512,
         'duration': 60,
-        'runs': 2,
+        'runs': 1,
 
         # Unused
         'simulate_partition': False,
@@ -149,7 +150,7 @@ def remote(ctx, debug=True):
         'gc_depth': 50,  # rounds
         'sync_retry_delay': 1_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
-        'batch_size': 210_000,  # bytes Hao: try 210_000?
+        'batch_size': 500_000,  # bytes Hao: try 210_000?
         'max_batch_delay': 5_000,  # ms
         'use_optimistic_tips': False,
         'use_parallel_proposals': True,
