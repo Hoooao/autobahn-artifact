@@ -33,7 +33,6 @@ async fn main() -> Result<()> {
         .args_from_usage("--rate=<INT> 'The rate (txs/s) at which to send the transactions'")
         .args_from_usage("--nodes=[ADDR]... 'Network addresses that must be reachable before starting the benchmark.'")
         .args_from_usage("--keys=<FILE> 'The file containing the key information for the benchmark.'")
-        .args_from_usage("--start-counter=[INT] 'The starting transaction ID for sample transactions (default: 0)'")
         .get_matches();
     let log_level = match matches.occurrences_of("v") {
         0 => "error",
@@ -70,11 +69,6 @@ async fn main() -> Result<()> {
         .context("Invalid socket address format")?;
 
     let key_file = matches.value_of("keys").unwrap();
-    let start_counter = matches
-        .value_of("start-counter")
-        .unwrap_or("0")
-        .parse::<u64>()
-        .context("The start counter must be a non-negative integer")?;
 
     info!("Node address: {}", target);
 
@@ -84,7 +78,6 @@ async fn main() -> Result<()> {
     // NOTE: This log entry is used to compute performance.
     info!("Transactions rate: {} tx/s", rate);
     info!("Key file provided: {}", key_file);
-    info!("Start counter: {}", start_counter);
 
 
     let secret = KeyPair::import(key_file).context("Failed to load the node's keypair")?;
@@ -102,7 +95,6 @@ async fn main() -> Result<()> {
         rate,
         nodes,
         signature_service,
-        start_counter,
     };
 
     // Wait for all nodes to be online and synchronized.
@@ -131,8 +123,7 @@ struct Client {
     rate: u64,
     nodes: Vec<SocketAddr>,
     // ========= Added for Evaluation purposes =========
-    signature_service: SignatureService,
-    start_counter: u64,
+    signature_service: SignatureService
 }
 
 
@@ -165,7 +156,7 @@ impl Client {
         // Submit all transactions.
         let burst = self.rate / PRECISION;
         let tx = BytesMut::with_capacity(self.size + 64); // + 64 for signatures
-        let mut counter = self.start_counter;
+        let mut counter = 0;
         let mut r :u64 = rand::thread_rng().gen();
         let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
         let interval = interval(Duration::from_millis(BURST_DURATION));
