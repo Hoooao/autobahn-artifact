@@ -292,13 +292,15 @@ class Bench:
             for (id, address) in addresses:
                 sharded_rate =  ceil(rate_share / bench_parameters.client_shards)
                 for s in range(bench_parameters.client_shards):
+                    start_counter = i * 100000 + s * 10000
                     cmd = CommandMaker.run_client(
                         address,
                         bench_parameters.tx_size,
                         sharded_rate,
                         key_files[i],
                         [x for y in workers_addresses for _, x in y],
-                        debug=debug
+                        debug=debug,
+                        start_counter=start_counter
                     )
                     if s == 0:
                         log_file = PathMaker.client_log_file(i, id) 
