@@ -206,10 +206,11 @@ class Bench:
     def _config(self, hosts, node_parameters, bench_parameters):
         Print.info('Generating configuration files...')
         cli_hosts = []
+        ## HAO: SPLIT TEST HARDCODE!!!!!!
+        node_num = 4
         if not bench_parameters.collocate:
-            cli_num = int(len(hosts)/2)
-            cli_hosts = hosts[cli_num:]
-            hosts = hosts[:cli_num]
+            cli_hosts = hosts[node_num:]
+            hosts = hosts[:node_num]
             print("Cli hosts: ", cli_hosts)  
             print("Node hosts: ", hosts)
         
@@ -259,7 +260,7 @@ class Bench:
             for i, host in enumerate(cli_hosts):
                 c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
                 c.put(PathMaker.committee_file(), '.')
-                c.put(PathMaker.key_file(i), '.')
+                c.put(PathMaker.key_file(i%node_num), '.')
                 c.put(PathMaker.parameters_file(), '.')
 
         return committee
@@ -270,7 +271,8 @@ class Bench:
         faults = bench_parameters.faults
         cli_hosts = []
         if not bench_parameters.collocate:
-            worker_num = int(len(hosts)/2)
+            worker_num = len(committee.workers_addresses(faults))
+            print("Cli num: ", len(hosts) - worker_num)
             cli_hosts = hosts[worker_num:]
             hosts = hosts[:worker_num]
         else:
@@ -287,8 +289,10 @@ class Bench:
         workers_addresses = committee.workers_addresses(faults)
         rate_share = ceil(rate / committee.workers())
         # hao" use node's key for cli as well... 
-        key_files = [PathMaker.key_file(i) for i in range(len(cli_hosts))]
-        for i, addresses in enumerate(workers_addresses):
+        key_files = [PathMaker.key_file(i%4) for i in range(len(cli_hosts))]
+        workers_addresses_copy = deepcopy(workers_addresses)
+        workers_addresses_copy += workers_addresses_copy
+        for i, addresses in enumerate(workers_addresses_copy):
             for (id, address) in addresses:
                 sharded_rate =  ceil(rate_share / bench_parameters.client_shards)
                 for s in range(bench_parameters.client_shards):
@@ -470,6 +474,7 @@ class Bench:
 
     def run(self, bench_parameters_dict, node_parameters_dict, debug=False):
         assert isinstance(debug, bool)
+        
         Print.heading('Starting remote benchmark')
         try:
             bench_parameters = BenchParameters(bench_parameters_dict)
@@ -512,12 +517,17 @@ class Bench:
                 for i in range(bench_parameters.runs):
                     Print.heading(f'Run {i+1}/{bench_parameters.runs}')
                     try:
+                        ## Hao: SPLIT TEST HARDCODED!!!!!!
+                        node_num = 4
+                        client_hosts = selected_hosts[node_num:]
+                        print("Client hosts: ", client_hosts)
                         self._run_single(
                             r, committee_copy, bench_parameters, debug, selected_hosts
                         )
 
                         faults = bench_parameters.faults
-                        logger = self._logs(committee_copy, faults, bench_parameters.collocate, selected_hosts[int(len(selected_hosts)/2):], bench_parameters.client_shards)
+                        
+                        logger = self._logs(committee_copy, faults, bench_parameters.collocate, client_hosts, bench_parameters.client_shards)
                         logger.print(PathMaker.result_file(
                             faults,
                             n, 

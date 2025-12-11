@@ -34,7 +34,7 @@ class LogParser:
                 results = p.map(self._parse_clients, clients)
         except (ValueError, IndexError, AttributeError) as e:
             raise ParseError(f'Failed to parse clients\' logs: {e}')
-        self.size, self.rate, self.start, misses, self.sent_samples \
+        self.size, self.rate, self.start, misses, self.sent_samples, client_ips \
             = zip(*results)
         self.misses = sum(misses)
 
@@ -59,6 +59,11 @@ class LogParser:
             k: v for x in sizes for k, v in x.items() if k in self.commits
         }
 
+        # Group clients by worker IP for proper pairing
+        self.client_to_worker_map = self._map_clients_to_workers(
+            client_ips, workers_ips
+        )
+
         # Determine whether the primary and the clis are collocated.
         self.collocate = collocate
 
@@ -77,6 +82,17 @@ class LogParser:
                     merged[k] = v
         return merged
 
+    def _map_clients_to_workers(self, client_ips, worker_ips):
+        # Create a mapping from worker index to list of client indices
+        # that connect to that worker
+        worker_to_clients = {}
+        for worker_idx, worker_ip in enumerate(worker_ips):
+            worker_to_clients[worker_idx] = []
+            for client_idx, client_ip in enumerate(client_ips):
+                if client_ip == worker_ip:
+                    worker_to_clients[worker_idx].append(client_idx)
+        return worker_to_clients
+
     def _parse_clients(self, log):
         if search(r'Error', log) is not None:
             raise ParseError('Client(s) panicked')
@@ -91,7 +107,11 @@ class LogParser:
 
         tmp = findall(r'\[(.*Z) .* sample transaction (\d+)', log)
         samples = {int(s): self._to_posix(t) for t, s in tmp}
-        return size, rate, start, misses, samples
+
+        # Extract the node IP that this client connects to
+        ip = search(r'Node address: (\d+\.\d+\.\d+\.\d+)', log).group(1)
+
+        return size, rate, start, misses, samples, ip
 
     def _parse_primaries(self, log):
         if search(r'(?:panicked|Error)', log) is not None:
@@ -183,15 +203,25 @@ class LogParser:
         list_latencies = []
         first_start = 0
         set_first = True
-        for sent, received in zip(self.sent_samples, self.received_samples):
+
+        # Iterate through each worker and its received samples
+        for worker_idx, received in enumerate(self.received_samples):
+            # Get all clients that connect to this worker
+            client_indices = self.client_to_worker_map.get(worker_idx, [])
+
+            # Merge all sent samples from clients connected to this worker
+            merged_sent = {}
+            for client_idx in client_indices:
+                merged_sent.update(self.sent_samples[client_idx])
+
+            # Now check received transactions against the merged sent samples
             for tx_id, batch_id in received.items():
                 if batch_id in self.commits:
-                    assert tx_id in sent  # We receive txs that we sent.
-                    start = sent[tx_id]
+                    assert tx_id in merged_sent  # We receive txs that we sent.
+                    start = merged_sent[tx_id]
                     end = self.commits[batch_id]
                     if set_first:
                         first_start = start
-                        first_end = end
                         set_first = False
                     latency += [end-start]
                     list_latencies += [(start-first_start, end-first_start, end-start)]

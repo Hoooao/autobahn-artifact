@@ -122,17 +122,19 @@ def install(ctx):
 def remote(ctx, debug=True):
     ''' Run benchmarks on AWS '''
     # Hao: configed according to experiment-configs/main-graph/autobahn/autobahn-config.txt
+    # Hao-later: the above degrades the perf, use what is here!
     bench_params = {
         'faults': 0,
         'nodes': [4],
         'workers': 1,
-        'co-locate': True,
-        # ,60000,70000,80000,10000,
-        'rate': [57000],
+        'co-locate': False,
+        # ,60000,70000,80000,10000, SPLIT should half the value
+        # 5000, 10000, 25000,30000,35000,40000
+        'rate': [25000],
         'client_shards': 1,
         'tx_size': 512,
-        'duration': 15,
-        'runs': 1,
+        'duration': 60,
+        'runs': 2,
 
         # Unused
         'simulate_partition': False,
@@ -143,13 +145,13 @@ def remote(ctx, debug=True):
     node_params = {
         'timeout_delay': 5_000,  # ms
         'header_size': 32,  # bytes
-        'max_header_delay': 5_000,  # ms
+        'max_header_delay': 200,  # ms
         'gc_depth': 50,  # rounds
-        'sync_retry_delay': 5_000,  # ms
+        'sync_retry_delay': 1_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
-        'batch_size': 500_000,  # bytes Hao: try 210_000?
-        'max_batch_delay': 20,  # ms
-        'use_optimistic_tips': True,
+        'batch_size': 210_000,  # bytes Hao: try 210_000?
+        'max_batch_delay': 5_000,  # ms
+        'use_optimistic_tips': False,
         'use_parallel_proposals': True,
         'k': 4,
         'use_fast_path': True,
