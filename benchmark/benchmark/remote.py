@@ -51,6 +51,59 @@ class Bench:
             if output.stderr:
                 raise ExecutionError(output.stderr)
 
+    def fetch_gcloud_vm_info(self):
+        """
+        Fetch GCloud VM information including node name, internal IP, and external IP.
+
+        Returns:
+            dict: A dictionary mapping instance names to their IP information.
+                  Format: {
+                      'instance-name': {
+                          'internal_ip': 'x.x.x.x',
+                          'external_ip': 'y.y.y.y',
+                          'zone': 'zone-name'
+                      }
+                  }
+        """
+        from google.cloud import compute_v1
+
+        vm_info = {}
+        client = compute_v1.InstancesClient()
+
+        try:
+            # Query for running and staging instances
+            filter_str = 'status eq "RUNNING"'
+            request = compute_v1.AggregatedListInstancesRequest(filter=filter_str)
+            request.project = self.settings.project_id
+            agg_list = client.aggregated_list(request=request)
+
+            for zone, response in agg_list:
+                # Remove the 'zones/' prefix from the zone name
+                zone_name = zone[6:]
+
+                for instance in response.instances:
+                    # Skip template instances
+                    if instance.name == 'autobahn-instance-template':
+                        continue
+
+                    # Get internal IP
+                    internal_ip = instance.network_interfaces[0].network_i_p
+
+                    # Get external IP (NAT IP)
+                    external_ip = None
+                    if instance.network_interfaces[0].access_configs:
+                        external_ip = instance.network_interfaces[0].access_configs[0].nat_i_p
+
+                    vm_info[instance.name] = {
+                        'internal_ip': internal_ip,
+                        'external_ip': external_ip,
+                        'zone': zone_name
+                    }
+
+            return vm_info
+
+        except Exception as e:
+            raise BenchError(f'Failed to fetch GCloud VM information: {e}')
     def install(self):
         Print.info('Installing rust and cloning the repo...')
         cmd = [
@@ -205,10 +258,10 @@ class Bench:
     def _config(self, hosts, node_parameters, bench_parameters):
         Print.info('Generating configuration files...')
         cli_hosts = []
+        node_num = 4
         if not bench_parameters.collocate:
-            cli_num = int(len(hosts)/2)
-            cli_hosts = hosts[cli_num:]
-            hosts = hosts[:cli_num]
+            cli_hosts = hosts[node_num:]
+            hosts = hosts[:node_num]
             print("Cli hosts: ", cli_hosts)  
             print("Node hosts: ", hosts)
         
@@ -258,7 +311,8 @@ class Bench:
             for i, host in enumerate(cli_hosts):
                 c = Connection(host, user=self.settings.username, connect_kwargs=self.connect)
                 c.put(PathMaker.committee_file(), '.')
-                c.put(PathMaker.key_file(i), '.')
+                for j, key_file in enumerate(key_files):
+                    c.put(key_file, '.')
                 c.put(PathMaker.parameters_file(), '.')
 
         return committee
@@ -269,7 +323,8 @@ class Bench:
         faults = bench_parameters.faults
         cli_hosts = []
         if not bench_parameters.collocate:
-            worker_num = int(len(hosts)/2)
+            worker_num = len(committee.workers_addresses(faults))
+            print("Cli num: ", len(hosts) - worker_num)
             cli_hosts = hosts[worker_num:]
             hosts = hosts[:worker_num]
         else:
@@ -286,11 +341,13 @@ class Bench:
         workers_addresses = committee.workers_addresses(faults)
         rate_share = ceil(rate / committee.workers())
         # hao" use node's key for cli as well... 
-        key_files = [PathMaker.key_file(i) for i in range(len(cli_hosts))]
-        for i, addresses in enumerate(workers_addresses):
+        key_files = [PathMaker.key_file(i%4) for i in range(len(cli_hosts))]
+        workers_addresses_copy = deepcopy(workers_addresses)
+        for i, addresses in enumerate(workers_addresses_copy):
             for (id, address) in addresses:
                 sharded_rate =  ceil(rate_share / bench_parameters.client_shards)
                 for s in range(bench_parameters.client_shards):
+                    start_counter = 0
                     cmd = CommandMaker.run_client(
                         address,
                         bench_parameters.tx_size,
@@ -341,16 +398,155 @@ class Bench:
          # Wait for all transactions to be processed.
         duration = bench_parameters.duration
         for i in progress_bar(range(20), prefix=f'Running benchmark ({duration} sec):'):
-            tick_size = ceil(duration / 20)
+            #tick_size = ceil(duration / 20)
             #print(tick_size, i, bench_parameters.partition_start, bench_parameters.simulate_partition)
-            if bench_parameters.simulate_partition and i*tick_size == bench_parameters.partition_start:
-                print('simulating partition')
-                self._simulate_partition(bench_parameters, committee, faults)
+            #if bench_parameters.simulate_partition and i*tick_size == bench_parameters.partition_start:
+            #    print('simulating partition')
+            #    self._simulate_partition(bench_parameters, committee, faults)
             
-            if bench_parameters.simulate_partition and i*tick_size == bench_parameters.partition_start + bench_parameters.partition_duration:
-                print('deleting partition')
-                self._delete_partition(bench_parameters, committee, faults)
+            #if bench_parameters.simulate_partition and i*tick_size == bench_parameters.partition_start + bench_parameters.partition_duration:
+            #    print('deleting partition')
+            #    self._delete_partition(bench_parameters, committee, faults)
 
+            sleep(ceil(duration / 20))
+        self.kill(hosts=cli_hosts, delete_logs=False)
+        self.kill(hosts=hosts, delete_logs=False)
+    def _run_single_mapped_pairs(self, rate, committee, bench_parameters, debug=False, hosts=[]):
+        # Fetch VM information to enable custom cli/worker pairing
+        vm_info = self.fetch_gcloud_vm_info()
+        
+        # HARDCODED MAPPING: client instance name -> replica instance name
+        cli_to_replica_mapping = {
+            'client0': 'replica0',
+            'client1': 'replica1',
+            'client2': 'replica2',
+            'client3': 'replica3',
+            # 'testclient0': 'replica0',
+            # 'testclient2': 'replica1',
+            # 'testclient1': 'replica2',
+            # 'testclient3': 'replica3',
+        }
+        
+        # Build mapping from external IP to instance name
+        ip_to_instance = {}
+        for vm_name, vm_data in vm_info.items():
+            ip_to_instance[vm_data['external_ip']] = vm_name
+        
+        # Build mapping from instance name to replica index in workers_addresses
+        instance_to_replica_idx = {}
+        
+        if hosts == []:
+            hosts = committee.ips()
+        faults = bench_parameters.faults
+        workers_addresses = committee.workers_addresses(faults)
+        
+        # Map each worker IP to its replica index in workers_addresses array
+        for replica_idx, addresses in enumerate(workers_addresses):
+            for (id, address) in addresses:
+                worker_ip = Committee.ip(address)
+                worker_instance = ip_to_instance.get(worker_ip)
+                if worker_instance:
+                    instance_to_replica_idx[worker_instance] = replica_idx
+                    print(f"Worker {worker_instance} ({worker_ip}) is at index {replica_idx}")
+        
+        # Separate worker hosts and client hosts
+        cli_hosts = []
+        if not bench_parameters.collocate:
+            worker_num = len(workers_addresses)
+            print("Cli num: ", len(hosts) - worker_num)
+            cli_hosts = hosts[worker_num:]
+            hosts = hosts[:worker_num]
+        else:
+            cli_hosts = hosts
+        
+        # Kill any potentially unfinished run and delete logs.
+        self.kill(hosts=cli_hosts, delete_logs=True)
+        self.kill(hosts=hosts, delete_logs=True)
+        
+        # Run the clients (they will wait for the nodes to be ready).
+        Print.info('Booting clients...')
+        rate_share = ceil(rate / committee.workers())
+
+        # For each client, determine which replica it should connect to
+        for cli_idx, cli_host in enumerate(cli_hosts):
+            # Get the instance name for this client host
+            cli_instance_name = ip_to_instance.get(cli_host)
+
+            if not cli_instance_name or cli_instance_name not in cli_to_replica_mapping:
+                print(f"Warning: No mapping found for {cli_host} (instance: {cli_instance_name}), skipping")
+                continue
+
+            # Get the target replica instance name from the hardcoded mapping
+            target_replica_instance = cli_to_replica_mapping[cli_instance_name]
+
+            # Find the index of this replica in workers_addresses
+            target_replica_idx = instance_to_replica_idx.get(target_replica_instance)
+
+            if target_replica_idx is None:
+                print(f"Warning: Could not find {target_replica_instance} for {cli_instance_name}, skipping")
+                continue
+
+            # Use the same key file as the target replica
+            client_key_file = PathMaker.key_file(target_replica_idx)
+
+            addresses = workers_addresses[target_replica_idx]
+            print(f"Pairing {cli_instance_name} ({cli_host}) -> {target_replica_instance} (at index {target_replica_idx}, using key {target_replica_idx})")
+
+            for (id, address) in addresses:
+                sharded_rate = ceil(rate_share / bench_parameters.client_shards)
+                for s in range(bench_parameters.client_shards):
+                    start_counter = cli_idx * 10000 + 5000 * s
+                    cmd = CommandMaker.run_client(
+                        address,
+                        bench_parameters.tx_size,
+                        sharded_rate,
+                        client_key_file,
+                        [x for y in workers_addresses for _, x in y],
+                        debug=debug,
+                        start_counter=start_counter
+                    )
+                    if s == 0:
+                        log_file = PathMaker.client_log_file(cli_idx, id)
+                    else:
+                        log_file = PathMaker.client_log_file_for_shards(cli_idx, id, s)
+                    print(f"Running client on host: {cli_host}")
+                    self._background_run(cli_host, cmd, log_file)
+
+        # Run the primaries (except the faulty ones).
+        Print.info('Booting primaries...')
+        for i, address in enumerate(committee.primary_addresses(faults)):
+            host = Committee.ip(address)
+            cmd = CommandMaker.run_primary(
+                PathMaker.key_file(i),
+                PathMaker.committee_file(),
+                PathMaker.db_path(i),
+                PathMaker.parameters_file(),
+                debug=debug
+            )
+            log_file = PathMaker.primary_log_file(i)
+            print("Running primary on host: ", host)
+            self._background_run(host, cmd, log_file)
+
+        # Run the workers (except the faulty ones).
+        Print.info('Booting workers...')
+        for i, addresses in enumerate(workers_addresses):
+            for (id, address) in addresses:
+                host = Committee.ip(address)
+                cmd = CommandMaker.run_worker(
+                    PathMaker.key_file(i),
+                    PathMaker.committee_file(),
+                    PathMaker.db_path(i, id),
+                    PathMaker.parameters_file(),
+                    id,  # The worker's id.
+                    debug=debug
+                )
+                log_file = PathMaker.worker_log_file(i, id)
+                print("Running worker on host: ", host)
+                self._background_run(host, cmd, log_file)
+
+        # Wait for all transactions to be processed.
+        duration = bench_parameters.duration
+        for i in progress_bar(range(20), prefix=f'Running benchmark ({duration} sec):'):
             sleep(ceil(duration / 20))
         self.kill(hosts=cli_hosts, delete_logs=False)
         self.kill(hosts=hosts, delete_logs=False)
@@ -511,12 +707,15 @@ class Bench:
                 for i in range(bench_parameters.runs):
                     Print.heading(f'Run {i+1}/{bench_parameters.runs}')
                     try:
+                        node_num = 4
+                        client_hosts = selected_hosts[node_num:]
+                        print("Client hosts: ", client_hosts)
                         self._run_single(
                             r, committee_copy, bench_parameters, debug, selected_hosts
                         )
 
                         faults = bench_parameters.faults
-                        logger = self._logs(committee_copy, faults, bench_parameters.collocate, selected_hosts[int(len(selected_hosts)/2):], bench_parameters.client_shards)
+                        logger = self._logs(committee_copy, faults, bench_parameters.collocate, client_hosts, bench_parameters.client_shards)
                         logger.print(PathMaker.result_file(
                             faults,
                             n, 
