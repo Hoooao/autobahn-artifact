@@ -126,12 +126,12 @@ def remote(ctx, debug=True):
         'faults': 0,
         'nodes': [4],
         'workers': 1,
-        'co-locate': True,
+        'co-locate': False,
         # ,60000,70000,80000,10000,
         'rate': [57000],
         'client_shards': 1,
         'tx_size': 512,
-        'duration': 15,
+        'duration': 35,
         'runs': 1,
 
         # Unused
@@ -148,8 +148,8 @@ def remote(ctx, debug=True):
         'sync_retry_delay': 5_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
         'batch_size': 500_000,  # bytes Hao: try 210_000?
-        'max_batch_delay': 20,  # ms
-        'use_optimistic_tips': True,
+        'max_batch_delay': 200,  # ms
+        'use_optimistic_tips': False,
         'use_parallel_proposals': True,
         'k': 4,
         'use_fast_path': True,

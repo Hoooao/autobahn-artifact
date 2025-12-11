@@ -292,7 +292,7 @@ class Bench:
             for (id, address) in addresses:
                 sharded_rate =  ceil(rate_share / bench_parameters.client_shards)
                 for s in range(bench_parameters.client_shards):
-                    start_counter = i * 100000 + s * 10000
+                    start_counter = i * 10000 
                     cmd = CommandMaker.run_client(
                         address,
                         bench_parameters.tx_size,
