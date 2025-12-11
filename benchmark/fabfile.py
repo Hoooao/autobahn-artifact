@@ -131,7 +131,7 @@ def remote(ctx, debug=True):
         'rate': [57000],
         'client_shards': 1,
         'tx_size': 512,
-        'duration': 35,
+        'duration': 25,
         'runs': 1,
 
         # Unused

@@ -300,7 +300,7 @@ class Bench:
                         key_files[i],
                         [x for y in workers_addresses for _, x in y],
                         debug=debug,
-                        start_counter=start_counter
+                        start_counter=1
                     )
                     if s == 0:
                         log_file = PathMaker.client_log_file(i, id) 
