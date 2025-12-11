@@ -165,7 +165,7 @@ impl Client {
         // Submit all transactions.
         let burst = self.rate / PRECISION;
         let tx = BytesMut::with_capacity(self.size + 64); // + 64 for signatures
-        let mut counter = self.start_counter
+        let mut counter = self.start_counter;
         let mut r :u64 = rand::thread_rng().gen();
         let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
         let interval = interval(Duration::from_millis(BURST_DURATION));
