@@ -347,12 +347,12 @@ class Bench:
         # hao" use node's key for cli as well... 
         key_files = [PathMaker.key_file(i%4) for i in range(len(cli_hosts))]
         workers_addresses_copy = deepcopy(workers_addresses)
-        workers_addresses_copy += workers_addresses_copy
+        #workers_addresses_copy += workers_addresses_copy
         for i, addresses in enumerate(workers_addresses_copy):
             for (id, address) in addresses:
                 sharded_rate =  ceil(rate_share / bench_parameters.client_shards)
                 for s in range(bench_parameters.client_shards):
-                    start_counter = i * 10000 
+                    start_counter = 0
                     cmd = CommandMaker.run_client(
                         address,
                         bench_parameters.tx_size,
@@ -720,7 +720,7 @@ class Bench:
                         node_num = 4
                         client_hosts = selected_hosts[node_num:]
                         print("Client hosts: ", client_hosts)
-                        self._run_single_mapped_pairs(
+                        self._run_single(
                             r, committee_copy, bench_parameters, debug, selected_hosts
                         )
 

@@ -131,7 +131,7 @@ def remote(ctx, debug=True):
         # ,60000,70000,80000,10000, SPLIT should half the value
         # 5000, 10000, 25000,30000,35000,40000
         # 10000, 20000, 30000, 40000, 50000, 55000, 60000, 70000 NON_SPLIT
-        'rate': [ 55000],
+        'rate': [ 60000],
         'client_shards': 2,
         'tx_size': 512,
         'duration': 60,
